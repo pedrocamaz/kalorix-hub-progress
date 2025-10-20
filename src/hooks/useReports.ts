@@ -7,27 +7,28 @@ interface CalorieRecord {
   weight: number
 }
 
-interface BalanceRecord {
-  day: number
+interface DayData {
+  date: string
+  calories: number
   balance: number
+  hasData: boolean
 }
 
-export const useReports = (userPhone: string, days: number = 30) => {
-  // Fetch historical data for charts
+export const useReports = (userPhone: string, year: number, month: number) => {
+  // Fetch historical data for charts (last 6 months)
   const { 
     data: chartData, 
     isLoading: isChartLoading, 
     isError: isChartError 
   } = useQuery({
-    queryKey: ['reportsChart', userPhone, days],
+    queryKey: ['reportsChart', userPhone, year, month],
     queryFn: async (): Promise<CalorieRecord[]> => {
       console.log('Fetching reports data for phone:', userPhone)
       
-      const endDate = new Date()
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - days)
+      // Get data for the last 6 months for trend chart
+      const endDate = new Date(year, month, 0) // Last day of selected month
+      const startDate = new Date(year, month - 6, 1) // 6 months before
 
-      // Get calories consumed per day
       const { data: mealsData, error: mealsError } = await supabase
         .from('registros_alimentares')
         .select('data_consumo, calorias')
@@ -40,8 +41,6 @@ export const useReports = (userPhone: string, days: number = 30) => {
         throw mealsError
       }
 
-      console.log('Raw meals data for reports:', mealsData)
-
       // Group meals by date and sum calories
       const caloriesByDate = (mealsData || []).reduce((acc, meal) => {
         const date = meal.data_consumo
@@ -52,19 +51,21 @@ export const useReports = (userPhone: string, days: number = 30) => {
         return acc
       }, {} as Record<string, number>)
 
-      console.log('Calories by date:', caloriesByDate)
-
-      // Create chart data for the last N days
+      // Create chart data for the last 6 months
       const chartData: CalorieRecord[] = []
       const baseWeight = 80 // From your user data
       
-      for (let i = 0; i < days; i++) {
-        const date = new Date()
-        date.setDate(date.getDate() - (days - 1 - i))
+      const monthsToShow = 6 * 30 // Approximate days in 6 months
+      for (let i = 0; i < monthsToShow; i++) {
+        const date = new Date(startDate)
+        date.setDate(date.getDate() + i)
+        
+        if (date > endDate) break
+        
         const dateStr = date.toISOString().split('T')[0]
         
-        // Simulate weight progression (you can replace with real data from peso_historico)
-        const weight = baseWeight - (i * 0.05) + (Math.random() * 0.3 - 0.15)
+        // Simulate weight progression
+        const weight = baseWeight - (i * 0.01) + (Math.random() * 0.3 - 0.15)
         
         chartData.push({
           date: dateStr,
@@ -73,23 +74,22 @@ export const useReports = (userPhone: string, days: number = 30) => {
         })
       }
 
-      console.log('Final chart data:', chartData)
       return chartData
     },
     enabled: !!userPhone,
   })
 
-  // Fetch caloric balance for heatmap
+  // Fetch calendar data for specific month
   const { 
-    data: heatmapData, 
-    isLoading: isHeatmapLoading, 
-    isError: isHeatmapError 
+    data: calendarData, 
+    isLoading: isCalendarLoading, 
+    isError: isCalendarError 
   } = useQuery({
-    queryKey: ['reportsHeatmap', userPhone, days],
-    queryFn: async (): Promise<BalanceRecord[]> => {
-      const endDate = new Date()
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - days)
+    queryKey: ['reportsCalendar', userPhone, year, month],
+    queryFn: async (): Promise<DayData[]> => {
+      // Get first and last day of the month
+      const firstDay = new Date(year, month - 1, 1)
+      const lastDay = new Date(year, month, 0)
 
       // Get daily calorie goal
       const { data: dietData } = await supabase
@@ -104,11 +104,11 @@ export const useReports = (userPhone: string, days: number = 30) => {
         .from('registros_alimentares')
         .select('data_consumo, calorias')
         .eq('usuario_telefone', userPhone)
-        .gte('data_consumo', startDate.toISOString().split('T')[0])
-        .lte('data_consumo', endDate.toISOString().split('T')[0])
+        .gte('data_consumo', firstDay.toISOString().split('T')[0])
+        .lte('data_consumo', lastDay.toISOString().split('T')[0])
 
       if (error) {
-        console.error('Error fetching heatmap data:', error)
+        console.error('Error fetching calendar data:', error)
         throw error
       }
 
@@ -122,32 +122,34 @@ export const useReports = (userPhone: string, days: number = 30) => {
         return acc
       }, {} as Record<string, number>)
 
-      // Create heatmap data
-      const heatmapData: BalanceRecord[] = []
-      for (let i = 0; i < days; i++) {
-        const date = new Date()
-        date.setDate(date.getDate() - (days - 1 - i))
+      // Create calendar data for each day of the month
+      const calendarData: DayData[] = []
+      const daysInMonth = lastDay.getDate()
+      
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day)
         const dateStr = date.toISOString().split('T')[0]
         
         const consumed = consumptionByDate[dateStr] || 0
         const balance = consumed - dailyGoal
         
-        heatmapData.push({
-          day: i + 1,
-          balance: Math.round(balance)
+        calendarData.push({
+          date: dateStr,
+          calories: consumed,
+          balance: Math.round(balance),
+          hasData: consumed > 0
         })
       }
 
-      console.log('Heatmap data:', heatmapData)
-      return heatmapData
+      return calendarData
     },
     enabled: !!userPhone,
   })
 
   return {
     chartData: chartData || [],
-    heatmapData: heatmapData || [],
-    isLoading: isChartLoading || isHeatmapLoading,
-    isError: isChartError || isHeatmapError,
+    calendarData: calendarData || [],
+    isLoading: isChartLoading || isCalendarLoading,
+    isError: isChartError || isCalendarError,
   }
 }
