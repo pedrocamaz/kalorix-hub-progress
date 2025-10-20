@@ -12,7 +12,14 @@ import MealDiary from "./pages/dashboard/MealDiary";
 import Profile from "./pages/dashboard/Profile";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -29,7 +36,6 @@ const App = () => (
             <Route path="meals" element={<MealDiary />} />
             <Route path="profile" element={<Profile />} />
           </Route>
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

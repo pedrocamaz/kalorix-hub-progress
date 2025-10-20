@@ -3,30 +3,88 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CreditCard, User } from "lucide-react";
-import { useState } from "react";
+import { CreditCard, User, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useProfile } from "@/hooks/useProfile";
 import { toast } from "sonner";
 
 const Profile = () => {
+  // CORRIGI AQUI: Usando o telefone que tem dados reais  
+  const userPhone = '5521997759217'; // Era '5521981970822'
+  
+  const { profile, isLoading, isError, updateProfile, isUpdating } = useProfile(userPhone);
+
   const [formData, setFormData] = useState({
-    name: "João Silva",
-    email: "joao@example.com",
-    phone: "+55 11 99999-9999",
-    weight: "93",
-    height: "178",
-    age: "28",
-    gender: "male",
-    activityLevel: "3",
-    goal: "lose",
+    nome: "",
+    email: "",
+    telefone: "",
+    peso: "",
+    altura: "",
+    idade: "",
+    sexo: "M",
+    nivel_atividade: "3",
+    objetivo: "2",
   });
+
+  // Update form when profile loads
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        nome: profile.nome || "",
+        email: profile.email || "",
+        telefone: profile.telefone,
+        peso: profile.peso,
+        altura: profile.altura.toString(),
+        idade: profile.idade.toString(),
+        sexo: profile.sexo,
+        nivel_atividade: profile.nivel_atividade,
+        objetivo: profile.objetivo,
+      });
+    }
+  }, [profile]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Carregando perfil...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError || !profile) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">Erro ao carregar perfil</p>
+          <p className="text-muted-foreground text-sm">
+            Verifique sua conexão e tente novamente
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Perfil atualizado com sucesso!");
+    
+    updateProfile({
+      nome: formData.nome,
+      email: formData.email,
+      peso: formData.peso,
+      altura: parseInt(formData.altura),
+      idade: parseInt(formData.idade),
+      sexo: formData.sexo,
+      nivel_atividade: formData.nivel_atividade,
+      objetivo: formData.objetivo,
+    });
   };
 
   const handleManageSubscription = () => {
-    // In production, this would redirect to Stripe customer portal
     toast.info("Redirecionando para gerenciar assinatura...");
   };
 
@@ -50,11 +108,11 @@ const Profile = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo</Label>
+                <Label htmlFor="nome">Nome Completo</Label>
                 <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  id="nome"
+                  value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                 />
               </div>
 
@@ -69,62 +127,64 @@ const Profile = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone">Telefone</Label>
+                <Label htmlFor="telefone">Telefone</Label>
                 <Input
-                  id="phone"
+                  id="telefone"
                   type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  value={formData.telefone}
+                  disabled
+                  className="bg-muted"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="age">Idade</Label>
+                <Label htmlFor="idade">Idade</Label>
                 <Input
-                  id="age"
+                  id="idade"
                   type="number"
-                  value={formData.age}
-                  onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                  value={formData.idade}
+                  onChange={(e) => setFormData({ ...formData, idade: e.target.value })}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="weight">Peso Atual (kg)</Label>
+                <Label htmlFor="peso">Peso Atual (kg)</Label>
                 <Input
-                  id="weight"
+                  id="peso"
                   type="number"
-                  value={formData.weight}
-                  onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                  step="0.1"
+                  value={formData.peso}
+                  onChange={(e) => setFormData({ ...formData, peso: e.target.value })}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="height">Altura (cm)</Label>
+                <Label htmlFor="altura">Altura (cm)</Label>
                 <Input
-                  id="height"
+                  id="altura"
                   type="number"
-                  value={formData.height}
-                  onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                  value={formData.altura}
+                  onChange={(e) => setFormData({ ...formData, altura: e.target.value })}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="gender">Sexo</Label>
-                <Select value={formData.gender} onValueChange={(value) => setFormData({ ...formData, gender: value })}>
-                  <SelectTrigger id="gender">
+                <Label htmlFor="sexo">Sexo</Label>
+                <Select value={formData.sexo} onValueChange={(value) => setFormData({ ...formData, sexo: value })}>
+                  <SelectTrigger id="sexo">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="male">Masculino</SelectItem>
-                    <SelectItem value="female">Feminino</SelectItem>
+                    <SelectItem value="M">Masculino</SelectItem>
+                    <SelectItem value="F">Feminino</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="activityLevel">Nível de Atividade</Label>
-                <Select value={formData.activityLevel} onValueChange={(value) => setFormData({ ...formData, activityLevel: value })}>
-                  <SelectTrigger id="activityLevel">
+                <Label htmlFor="nivel_atividade">Nível de Atividade</Label>
+                <Select value={formData.nivel_atividade} onValueChange={(value) => setFormData({ ...formData, nivel_atividade: value })}>
+                  <SelectTrigger id="nivel_atividade">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -139,21 +199,21 @@ const Profile = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="goal">Objetivo</Label>
-              <Select value={formData.goal} onValueChange={(value) => setFormData({ ...formData, goal: value })}>
-                <SelectTrigger id="goal">
+              <Label htmlFor="objetivo">Objetivo</Label>
+              <Select value={formData.objetivo} onValueChange={(value) => setFormData({ ...formData, objetivo: value })}>
+                <SelectTrigger id="objetivo">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="lose">Emagrecer</SelectItem>
-                  <SelectItem value="maintain">Manter peso</SelectItem>
-                  <SelectItem value="gain">Ganhar peso</SelectItem>
+                  <SelectItem value="1">Emagrecer</SelectItem>
+                  <SelectItem value="2">Manter peso</SelectItem>
+                  <SelectItem value="3">Ganhar peso</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <Button type="submit" className="w-full md:w-auto">
-              Salvar Alterações
+            <Button type="submit" className="w-full md:w-auto" disabled={isUpdating}>
+              {isUpdating ? "Salvando..." : "Salvar Alterações"}
             </Button>
           </form>
         </CardContent>
@@ -171,8 +231,10 @@ const Profile = () => {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between p-4 rounded-lg bg-secondary">
             <div>
-              <p className="font-semibold">Plano Premium</p>
-              <p className="text-sm text-muted-foreground">Assinatura ativa</p>
+              <p className="font-semibold">Premium</p>
+              <p className="text-sm text-muted-foreground">
+                {profile.assinatura_ativa ? 'Assinatura ativa' : 'Assinatura inativa'}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-bold text-primary">R$ 29,90</p>

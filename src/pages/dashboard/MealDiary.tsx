@@ -1,40 +1,66 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, Coffee, Sun, Moon, Apple } from "lucide-react";
-import { toast } from "sonner";
+import { Edit, Trash2, Coffee, Sun, Moon, Apple, Loader2 } from "lucide-react";
+import { useMealDiary } from "@/hooks/useMealDiary";
 
 const MealDiary = () => {
-  // Mock meal data
-  const meals = [
-    { id: 1, date: "2025-01-15", time: "19:30", type: "Jantar", name: "Salmão grelhado com legumes", calories: 700, protein: 45, carbs: 25, fats: 35 },
-    { id: 2, date: "2025-01-15", time: "16:00", type: "Lanche", name: "Iogurte natural com granola", calories: 180, protein: 12, carbs: 20, fats: 6 },
-    { id: 3, date: "2025-01-15", time: "12:45", type: "Almoço", name: "Frango grelhado com arroz integral e salada", calories: 650, protein: 48, carbs: 65, fats: 18 },
-    { id: 4, date: "2025-01-15", time: "08:30", type: "Café da manhã", name: "Pão integral com ovo mexido", calories: 320, protein: 18, carbs: 35, fats: 12 },
-    { id: 5, date: "2025-01-14", time: "20:00", type: "Jantar", name: "Filé de frango com batata doce", calories: 580, protein: 42, carbs: 55, fats: 15 },
-    { id: 6, date: "2025-01-14", time: "15:30", type: "Lanche", name: "Shake de proteína com banana", calories: 250, protein: 30, carbs: 28, fats: 4 },
-  ];
+  // CORRIGI AQUI: Usando o telefone que tem dados reais
+  const userPhone = '5521997759217'; // Era '5521981970822'
+  
+  const { meals, isLoading, isError, deleteMeal, isDeleting } = useMealDiary(userPhone);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Carregando diário de refeições...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">Erro ao carregar diário de refeições</p>
+          <p className="text-muted-foreground text-sm">
+            Verifique sua conexão e tente novamente
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const getMealIcon = (type: string) => {
-    switch (type) {
-      case "Café da manhã":
-        return <Coffee className="h-5 w-5 text-primary" />;
-      case "Almoço":
-        return <Sun className="h-5 w-5 text-primary" />;
-      case "Lanche":
-        return <Apple className="h-5 w-5 text-primary" />;
-      case "Jantar":
-        return <Moon className="h-5 w-5 text-primary" />;
-      default:
-        return <Apple className="h-5 w-5 text-primary" />;
+    const normalizedType = type.toLowerCase();
+    if (normalizedType.includes('café') || normalizedType === 'breakfast') {
+      return <Coffee className="h-5 w-5 text-primary" />;
     }
+    if (normalizedType.includes('almoço') || normalizedType === 'lunch') {
+      return <Sun className="h-5 w-5 text-primary" />;
+    }
+    if (normalizedType.includes('lanche') || normalizedType === 'snack') {
+      return <Apple className="h-5 w-5 text-primary" />;
+    }
+    if (normalizedType.includes('jantar') || normalizedType === 'dinner') {
+      return <Moon className="h-5 w-5 text-primary" />;
+    }
+    return <Apple className="h-5 w-5 text-primary" />;
   };
 
   const handleEdit = (id: number) => {
-    toast.info("Função de edição em desenvolvimento");
+    // TODO: Implement edit functionality
+    console.log('Edit meal:', id);
   };
 
   const handleDelete = (id: number) => {
-    toast.success("Refeição removida com sucesso!");
+    if (window.confirm('Tem certeza que deseja remover esta refeição?')) {
+      deleteMeal(id);
+    }
   };
 
   // Group meals by date
@@ -61,6 +87,39 @@ const MealDiary = () => {
     }
   };
 
+  const getMealTypeInPortuguese = (type: string) => {
+    const typeMap: { [key: string]: string } = {
+      'breakfast': 'Café da manhã',
+      'lunch': 'Almoço',
+      'snack': 'Lanche',
+      'dinner': 'Jantar',
+      'cafe_da_manha': 'Café da manhã',
+      'almoco': 'Almoço',
+      'lanche': 'Lanche',
+      'jantar': 'Jantar'
+    };
+    return typeMap[type.toLowerCase()] || type;
+  };
+
+  if (meals.length === 0) {
+    return (
+      <div className="space-y-6 p-4 md:p-6">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Diário de Refeições</h1>
+          <p className="text-muted-foreground">Histórico completo das suas refeições</p>
+        </div>
+        
+        <div className="text-center py-12">
+          <Apple className="h-16 w-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
+          <p className="text-lg text-muted-foreground mb-2">Nenhuma refeição encontrada</p>
+          <p className="text-sm text-muted-foreground">
+            Comece enviando uma foto da sua refeição pelo WhatsApp!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div>
@@ -80,7 +139,7 @@ const MealDiary = () => {
                   <CardTitle className="flex items-center justify-between text-base">
                     <div className="flex items-center gap-2">
                       {getMealIcon(meal.type)}
-                      <span>{meal.type}</span>
+                      <span>{getMealTypeInPortuguese(meal.type)}</span>
                       <span className="text-sm text-muted-foreground font-normal">{meal.time}</span>
                     </div>
                     <div className="flex gap-2">
@@ -95,6 +154,7 @@ const MealDiary = () => {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(meal.id)}
+                        disabled={isDeleting}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

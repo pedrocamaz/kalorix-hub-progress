@@ -1,20 +1,39 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Calendar } from "lucide-react";
+import { Calendar, Loader2 } from "lucide-react";
+import { useReports } from "@/hooks/useReports";
 
 const Reports = () => {
-  // Mock data for the last 30 days
-  const chartData = Array.from({ length: 30 }, (_, i) => ({
-    day: i + 1,
-    calories: Math.floor(Math.random() * 800) + 1800,
-    weight: 93 - (i * 0.1) + (Math.random() * 0.5 - 0.25),
-  }));
+  // CONFIRMAR: Certificar que está usando o telefone correto
+  const userPhone = '5521997759217'; // Manter este
+  
+  const { chartData, heatmapData, isLoading, isError } = useReports(userPhone, 30);
 
-  // Mock heatmap data (caloric balance for last 30 days)
-  const heatmapData = Array.from({ length: 30 }, (_, i) => ({
-    day: i + 1,
-    balance: Math.floor(Math.random() * 600) - 300, // -300 to +300
-  }));
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Carregando relatórios...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">Erro ao carregar relatórios</p>
+          <p className="text-muted-foreground text-sm">
+            Verifique sua conexão e tente novamente
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const getHeatmapColor = (balance: number) => {
     if (balance < -200) return "bg-red-500";
@@ -86,10 +105,10 @@ const Reports = () => {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis 
-                  dataKey="day" 
+                  dataKey="date" 
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
-                  tickFormatter={(value) => `D${value}`}
+                  tickFormatter={(value) => new Date(value).getDate().toString()}
                 />
                 <YAxis 
                   yAxisId="left"
@@ -110,6 +129,7 @@ const Reports = () => {
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px'
                   }}
+                  labelFormatter={(value) => new Date(value).toLocaleDateString('pt-BR')}
                 />
                 <Legend />
                 <Line 
