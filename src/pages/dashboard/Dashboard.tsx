@@ -4,8 +4,7 @@ import { Apple, Flame, Loader2 } from "lucide-react";
 import { useDashboardData } from "@/hooks/useDashboardData";
 
 const Dashboard = () => {
-  // Hardcoded user phone for now - will be replaced with dynamic auth later
-  const userPhone = '5521997759217';
+  const userPhone = localStorage.getItem('sessionPhone') || '';
   
   const { 
     dietData, 

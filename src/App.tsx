@@ -11,6 +11,7 @@ import Reports from "./pages/dashboard/Reports";
 import MealDiary from "./pages/dashboard/MealDiary";
 import Profile from "./pages/dashboard/Profile";
 import NotFound from "./pages/NotFound";
+import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="meals" element={<MealDiary />} />
             <Route path="profile" element={<Profile />} />
           </Route>
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

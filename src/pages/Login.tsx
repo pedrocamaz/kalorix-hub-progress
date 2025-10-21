@@ -15,12 +15,21 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
-    // Simulate magic link send
-    setTimeout(() => {
-      toast.success("Link de acesso enviado para seu WhatsApp!");
+    try {
+      const res = await fetch(import.meta.env.VITE_N8N_MAGIC_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (!res.ok) throw new Error("Webhook error");
+      await res.json();
+      toast.success("Link de acesso enviado pelo WhatsApp!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Falha ao enviar link. Tente novamente.");
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   return (

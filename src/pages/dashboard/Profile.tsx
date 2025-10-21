@@ -9,8 +9,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { toast } from "sonner";
 
 const Profile = () => {
-  // CORRIGI AQUI: Usando o telefone que tem dados reais  
-  const userPhone = '5521997759217'; // Era '5521981970822'
+  const userPhone = localStorage.getItem('sessionPhone') || '';
   
   const { profile, isLoading, isError, updateProfile, isUpdating } = useProfile(userPhone);
 

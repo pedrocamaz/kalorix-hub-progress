@@ -8,9 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const MealDiary = () => {
-  // CORRIGI AQUI: Usando o telefone que tem dados reais
-  const userPhone = '5521997759217'; // Era '5521981970822'
-  
+  const userPhone = localStorage.getItem('sessionPhone') || '';
   const { meals, isLoading, isError, deleteMeal, isDeleting, updateMeal, isUpdating } = useMealDiary(userPhone);
 
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);

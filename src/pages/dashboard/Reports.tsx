@@ -6,8 +6,7 @@ import { useReports } from "@/hooks/useReports";
 import { useState } from "react";
 
 const Reports = () => {
-  const userPhone = '5521997759217';
-  
+  const userPhone = localStorage.getItem('sessionPhone') || '';
   // State for calendar navigation
   const [currentDate, setCurrentDate] = useState(new Date());
   const currentYear = currentDate.getFullYear();

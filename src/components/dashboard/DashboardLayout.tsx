@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/button";
 import { LayoutDashboard, FileText, Utensils, User } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import BottomNavigationBar from "./BottomNavigationBar";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 export const DashboardLayout = () => {
   const location = useLocation();
+  useRequireAuth();
 
   const navigation = [
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
