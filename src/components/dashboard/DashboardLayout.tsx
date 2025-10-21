@@ -1,11 +1,10 @@
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FileText, Utensils, User, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { LayoutDashboard, FileText, Utensils, User } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import BottomNavigationBar from "./BottomNavigationBar";
 
 export const DashboardLayout = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
   const navigation = [
@@ -23,13 +22,6 @@ export const DashboardLayout = () => {
       <header className="md:hidden sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
         <div className="flex items-center justify-between p-4">
           <Logo />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </Button>
         </div>
       </header>
 
@@ -56,30 +48,16 @@ export const DashboardLayout = () => {
           </div>
         </aside>
 
-        {/* Sidebar - Mobile */}
-        {sidebarOpen && (
-          <div className="md:hidden fixed inset-0 z-40 bg-background">
-            <nav className="p-4 space-y-1">
-              {navigation.map((item) => (
-                <Link key={item.path} to={item.path} onClick={() => setSidebarOpen(false)}>
-                  <Button
-                    variant={isActive(item.path) ? "secondary" : "ghost"}
-                    className="w-full justify-start"
-                  >
-                    <item.icon className="mr-3 h-5 w-5" />
-                    {item.name}
-                  </Button>
-                </Link>
-              ))}
-            </nav>
-          </div>
-        )}
-
         {/* Main Content */}
-        <main className="flex-1 md:ml-64 w-full">
-          <Outlet />
+        <main className="flex-1 md:ml-64 w-full pb-24 md:pb-0">
+          <div className="p-4 md:p-6">
+            <Outlet />
+          </div>
         </main>
       </div>
+
+      {/* Bottom Navigation (mobile only) */}
+      <BottomNavigationBar />
     </div>
   );
 };
