@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
 
-interface Meal {
+export interface Meal {
   id: number
   date: string
   time: string
@@ -134,11 +134,44 @@ export const useMealDiary = (userPhone: string) => {
     }
   })
 
+  // Update meal mutation
+  const updateMealMutation = useMutation({
+    mutationFn: async (updated: Partial<Meal> & { id: number }) => {
+      const payload: Record<string, any> = {}
+      if (updated.name !== undefined) payload.nome_alimento = updated.name
+      if (updated.calories !== undefined) payload.calorias = updated.calories
+      if (updated.protein !== undefined) payload.proteinas = updated.protein
+      if (updated.carbs !== undefined) payload.carboidratos = updated.carbs
+      if (updated.fats !== undefined) payload.gorduras = updated.fats
+
+      const { error } = await supabase
+        .from('registros_alimentares')
+        .update(payload)
+        .eq('id', updated.id)
+        .eq('usuario_telefone', userPhone)
+
+      if (error) {
+        throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mealDiary', userPhone] })
+      queryClient.invalidateQueries({ queryKey: ['todaysMeals', userPhone] })
+      toast.success('Refeição atualizada!')
+    },
+    onError: (error: any) => {
+      console.error('Error updating meal:', error)
+      toast.error('Erro ao atualizar refeição')
+    },
+  })
+
   return {
     meals: meals || [],
     isLoading,
     isError,
     deleteMeal: deleteMealMutation.mutate,
-    isDeleting: deleteMealMutation.isPending
+    isDeleting: deleteMealMutation.isPending,
+    updateMeal: updateMealMutation.mutate,
+    isUpdating: updateMealMutation.isPending,
   }
 }

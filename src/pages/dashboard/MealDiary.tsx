@@ -1,13 +1,38 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Edit, Trash2, Coffee, Sun, Moon, Apple, Loader2 } from "lucide-react";
-import { useMealDiary } from "@/hooks/useMealDiary";
+import { useMealDiary, type Meal } from "@/hooks/useMealDiary";
+import { useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const MealDiary = () => {
   // CORRIGI AQUI: Usando o telefone que tem dados reais
   const userPhone = '5521997759217'; // Era '5521981970822'
   
-  const { meals, isLoading, isError, deleteMeal, isDeleting } = useMealDiary(userPhone);
+  const { meals, isLoading, isError, deleteMeal, isDeleting, updateMeal, isUpdating } = useMealDiary(userPhone);
+
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    calories: "",
+    protein: "",
+    carbs: "",
+    fats: "",
+  });
+
+  useEffect(() => {
+    if (editingMeal) {
+      setFormData({
+        name: editingMeal.name ?? "",
+        calories: editingMeal.calories?.toString() ?? "",
+        protein: editingMeal.protein?.toString() ?? "",
+        carbs: editingMeal.carbs?.toString() ?? "",
+        fats: editingMeal.fats?.toString() ?? "",
+      });
+    }
+  }, [editingMeal]);
 
   // Loading state
   if (isLoading) {
@@ -52,9 +77,8 @@ const MealDiary = () => {
     return <Apple className="h-5 w-5 text-primary" />;
   };
 
-  const handleEdit = (id: number) => {
-    // TODO: Implement edit functionality
-    console.log('Edit meal:', id);
+  const handleEdit = (meal: Meal) => {
+    setEditingMeal(meal);
   };
 
   const handleDelete = (id: number) => {
@@ -120,6 +144,25 @@ const MealDiary = () => {
     );
   }
 
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMeal) return;
+
+    updateMeal(
+      {
+        id: editingMeal.id,
+        name: formData.name,
+        calories: parseFloat(formData.calories),
+        protein: parseFloat(formData.protein),
+        carbs: parseFloat(formData.carbs),
+        fats: parseFloat(formData.fats),
+      },
+      {
+        onSuccess: () => setEditingMeal(null),
+      }
+    );
+  };
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div>
@@ -146,7 +189,7 @@ const MealDiary = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleEdit(meal.id)}
+                        onClick={() => handleEdit(meal)}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -187,6 +230,86 @@ const MealDiary = () => {
           </div>
         ))}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingMeal} onOpenChange={(open) => { if (!open) setEditingMeal(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Refeição</DialogTitle>
+            <DialogDescription>Atualize as informações da refeição selecionada.</DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleSave}>
+            <div className="space-y-2">
+              <Label htmlFor="name">Nome</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData((s) => ({ ...s, name: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="calories">Calorias (kcal)</Label>
+                <Input
+                  id="calories"
+                  type="number"
+                  step="0.1"
+                  value={formData.calories}
+                  onChange={(e) => setFormData((s) => ({ ...s, calories: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="protein">Proteínas (g)</Label>
+                <Input
+                  id="protein"
+                  type="number"
+                  step="0.1"
+                  value={formData.protein}
+                  onChange={(e) => setFormData((s) => ({ ...s, protein: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="carbs">Carboidratos (g)</Label>
+                <Input
+                  id="carbs"
+                  type="number"
+                  step="0.1"
+                  value={formData.carbs}
+                  onChange={(e) => setFormData((s) => ({ ...s, carbs: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fats">Gorduras (g)</Label>
+                <Input
+                  id="fats"
+                  type="number"
+                  step="0.1"
+                  value={formData.fats}
+                  onChange={(e) => setFormData((s) => ({ ...s, fats: e.target.value }))}
+                  required
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <DialogClose asChild>
+                <Button type="button" variant="ghost">
+                  Cancelar
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? "Salvando..." : "Salvar Alterações"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
