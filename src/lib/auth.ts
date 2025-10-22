@@ -16,7 +16,7 @@ export async function createMagicLink(phone: string): Promise<string> {
     throw error;
   }
 
-  const origin = window.location.origin;
+  const origin = (typeof window !== 'undefined' && window.location?.origin) || import.meta.env.VITE_APP_BASE_URL || 'http://localhost:8080';
   return `${origin}/auth/callback?token=${encodeURIComponent(token)}`;
 }
 
