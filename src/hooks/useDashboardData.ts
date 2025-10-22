@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
+import { normalizePhone } from '@/lib/phone'
 
 interface DietData {
   calorias_diarias: string
@@ -31,28 +32,27 @@ interface ConsumedTotals {
 }
 
 export const useDashboardData = (userPhone: string) => {
+  const phone = normalizePhone(userPhone)
   // Fetch diet goals
   const { 
     data: dietData, 
     isLoading: isDietLoading, 
     isError: isDietError 
   } = useQuery({
-    queryKey: ['dietData', userPhone],
+    queryKey: ['dietData', phone],
     queryFn: async (): Promise<DietData | null> => {
       const { data, error } = await supabase
         .from('dietas')
         .select('calorias_diarias, proteina_gramas, carboidrato_gramas, gordura_gramas, gasto_basal, neat, saldo_hoje, meta_alvo')
-        .eq('usuario_telefone', userPhone)
-        .single()
-
+        .eq('usuario_telefone', phone)
+        .maybeSingle()
       if (error) {
         console.error('Error fetching diet data:', error)
         throw error
       }
-
       return data
     },
-    enabled: !!userPhone,
+    enabled: !!phone,
   })
 
   // Get today's date in YYYY-MM-DD format
@@ -64,23 +64,21 @@ export const useDashboardData = (userPhone: string) => {
     isLoading: isMealsLoading, 
     isError: isMealsError 
   } = useQuery({
-    queryKey: ['todaysMeals', userPhone, today],
+    queryKey: ['todaysMeals', phone, today],
     queryFn: async (): Promise<MealRecord[]> => {
       const { data, error } = await supabase
         .from('registros_alimentares')
         .select('nome_alimento, calorias, proteinas, carboidratos, gorduras, hora_consumo, tipo_refeicao, data_consumo')
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
         .eq('data_consumo', today)
         .order('hora_consumo', { ascending: true })
-
       if (error) {
         console.error('Error fetching meals data:', error)
         throw error
       }
-
       return data || []
     },
-    enabled: !!userPhone,
+    enabled: !!phone,
   })
 
   // Calculate consumed totals

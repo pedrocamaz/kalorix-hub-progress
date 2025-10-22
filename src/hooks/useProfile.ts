@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
+import { normalizePhone } from '@/lib/phone'
 
 interface UserProfile {
   id: string
@@ -28,9 +29,9 @@ export const useProfile = (userPhone: string) => {
     queryKey: ['userProfile', userPhone],
     queryFn: async (): Promise<UserProfile | null> => {
       console.log('Fetching profile for phone:', userPhone)
-      
+      const phone = normalizePhone(userPhone)
       const { data, error } = await supabase
-        .from('users') // Nome correto da tabela
+        .from('users')
         .select(`
           id,
           nome,
@@ -44,15 +45,13 @@ export const useProfile = (userPhone: string) => {
           objetivo,
           assinatura_ativa
         `)
-        .eq('telefone', userPhone)
-        .single()
+        .eq('telefone', phone)
+        .maybeSingle()
 
       if (error) {
         console.error('Error fetching user profile:', error)
         throw error
       }
-
-      console.log('Profile data:', data)
       return data
     },
     enabled: !!userPhone,
@@ -61,6 +60,7 @@ export const useProfile = (userPhone: string) => {
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (profileData: Partial<UserProfile>) => {
+      const phone = normalizePhone(userPhone)
       const { error } = await supabase
         .from('users')
         .update({
@@ -73,7 +73,7 @@ export const useProfile = (userPhone: string) => {
           nivel_atividade: profileData.nivel_atividade,
           objetivo: profileData.objetivo
         })
-        .eq('telefone', userPhone)
+        .eq('telefone', phone)
 
       if (error) {
         throw error
@@ -138,7 +138,7 @@ export const useProfile = (userPhone: string) => {
     await supabase
       .from('dietas')
       .upsert({
-        usuario_telefone: userPhone,
+        usuario_telefone: normalizePhone(userPhone),
         calorias_diarias: Math.round(metaAlvo).toString(),
         proteina_gramas: Math.round(proteinGrams).toString(),
         carboidrato_gramas: Math.round(carbGrams).toString(),

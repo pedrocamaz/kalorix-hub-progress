@@ -7,6 +7,8 @@ import { CreditCard, User, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useProfile } from "@/hooks/useProfile";
 import { toast } from "sonner";
+import { supabase, supabaseUrl } from "@/lib/supabaseClient";
+import type { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from '@supabase/supabase-js'
 
 const Profile = () => {
   const userPhone = localStorage.getItem('sessionPhone') || '';
@@ -24,6 +26,8 @@ const Profile = () => {
     nivel_atividade: "3",
     objetivo: "2",
   });
+
+  const [portalLoading, setPortalLoading] = useState(false);
 
   // Update form when profile loads
   useEffect(() => {
@@ -83,8 +87,55 @@ const Profile = () => {
     });
   };
 
-  const handleManageSubscription = () => {
-    toast.info("Redirecionando para gerenciar assinatura...");
+  const handleManageSubscription = async () => {
+    try {
+      setPortalLoading(true);
+      const userPhone = localStorage.getItem('sessionPhone') || '';
+      if (!userPhone) {
+        toast.error("Sessão inválida. Faça login novamente.");
+        return;
+      }
+      const returnUrl = window.location.origin + "/dashboard/profile";
+
+      // 1) Tenta pelo invoke (recomendado)
+      const { data, error } = await supabase.functions.invoke("billing-portal", {
+        body: { phone: userPhone, return_url: returnUrl },
+      });
+
+      if (error) {
+        // 2) Fallback de debug: fetch direto para capturar status/body
+        try {
+          const r = await fetch(`${supabaseUrl}/functions/v1/billing-portal`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY!,
+            },
+            body: JSON.stringify({ phone: userPhone, return_url: returnUrl }),
+          });
+          const text = await r.text();
+          console.error("billing-portal direct fetch:", { status: r.status, body: text });
+          toast.error(`Erro ${r.status}: ${text || "Falha ao abrir o portal"}`);
+        } catch (e: any) {
+          console.error("billing-portal direct fetch failed:", e);
+          toast.error("Erro ao contactar a Edge Function");
+        }
+        return;
+      }
+
+      if (!data?.url) {
+        console.error("billing-portal: resposta sem url", data);
+        toast.error("Portal não retornou URL");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch (e: any) {
+      console.error("billing-portal exception:", e);
+      toast.error(e?.message || "Erro inesperado ao abrir o portal");
+    } finally {
+      setPortalLoading(false);
+    }
   };
 
   return (
@@ -241,8 +292,8 @@ const Profile = () => {
             </div>
           </div>
 
-          <Button onClick={handleManageSubscription} variant="outline" className="w-full">
-            Gerenciar Assinatura no Stripe
+          <Button onClick={handleManageSubscription} variant="outline" className="w-full" disabled={portalLoading}>
+            {portalLoading ? "Abrindo..." : "Gerenciar Assinatura no Stripe"}
           </Button>
         </CardContent>
       </Card>

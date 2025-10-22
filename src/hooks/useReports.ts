@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
+import { normalizePhone } from '@/lib/phone'
 
 interface CalorieRecord {
   date: string
@@ -15,15 +16,16 @@ interface DayData {
 }
 
 export const useReports = (userPhone: string, year: number, month: number) => {
-  // Fetch historical data for charts (last 6 months)
+  const phone = normalizePhone(userPhone)
+  // Trend (last 6 months)
   const { 
     data: chartData, 
     isLoading: isChartLoading, 
     isError: isChartError 
   } = useQuery({
-    queryKey: ['reportsChart', userPhone, year, month],
+    queryKey: ['reportsChart', phone, year, month],
     queryFn: async (): Promise<CalorieRecord[]> => {
-      console.log('Fetching reports data for phone:', userPhone)
+      console.log('Fetching reports data for phone:', phone)
       
       // Get data for the last 6 months for trend chart
       const endDate = new Date(year, month, 0) // Last day of selected month
@@ -32,7 +34,7 @@ export const useReports = (userPhone: string, year: number, month: number) => {
       const { data: mealsData, error: mealsError } = await supabase
         .from('registros_alimentares')
         .select('data_consumo, calorias')
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
         .gte('data_consumo', startDate.toISOString().split('T')[0])
         .lte('data_consumo', endDate.toISOString().split('T')[0])
 
@@ -76,16 +78,16 @@ export const useReports = (userPhone: string, year: number, month: number) => {
 
       return chartData
     },
-    enabled: !!userPhone,
+    enabled: !!phone,
   })
 
-  // Fetch calendar data for specific month
+  // Calendar month
   const { 
     data: calendarData, 
     isLoading: isCalendarLoading, 
     isError: isCalendarError 
   } = useQuery({
-    queryKey: ['reportsCalendar', userPhone, year, month],
+    queryKey: ['reportsCalendar', phone, year, month],
     queryFn: async (): Promise<DayData[]> => {
       // Get first and last day of the month
       const firstDay = new Date(year, month - 1, 1)
@@ -95,7 +97,7 @@ export const useReports = (userPhone: string, year: number, month: number) => {
       const { data: dietData } = await supabase
         .from('dietas')
         .select('calorias_diarias')
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
         .single()
 
       const dailyGoal = parseFloat(dietData?.calorias_diarias || '2700')
@@ -103,7 +105,7 @@ export const useReports = (userPhone: string, year: number, month: number) => {
       const { data: mealsData, error } = await supabase
         .from('registros_alimentares')
         .select('data_consumo, calorias')
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
         .gte('data_consumo', firstDay.toISOString().split('T')[0])
         .lte('data_consumo', lastDay.toISOString().split('T')[0])
 
@@ -143,7 +145,7 @@ export const useReports = (userPhone: string, year: number, month: number) => {
 
       return calendarData
     },
-    enabled: !!userPhone,
+    enabled: !!phone,
   })
 
   return {

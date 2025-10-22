@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { normalizePhone } from "@/lib/phone";
 
 const Login = () => {
   const [phone, setPhone] = useState("");
@@ -16,13 +17,22 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
+      const normalized = normalizePhone(phone);
       const res = await fetch(import.meta.env.VITE_N8N_MAGIC_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: normalized }),
       });
-      if (!res.ok) throw new Error("Webhook error");
-      await res.json();
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Webhook error (${res.status}): ${errText}`);
+      }
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        await res.json().catch(() => null);
+      } else {
+        await res.text().catch(() => null);
+      }
       toast.success("Link de acesso enviado pelo WhatsApp!");
     } catch (err) {
       console.error(err);

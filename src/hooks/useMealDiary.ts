@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
+import { normalizePhone } from '@/lib/phone'
 
 export interface Meal {
   id: number
@@ -16,6 +17,7 @@ export interface Meal {
 
 export const useMealDiary = (userPhone: string) => {
   const queryClient = useQueryClient()
+  const phone = normalizePhone(userPhone)
 
   // Fetch all meals for the user
   const { 
@@ -23,7 +25,7 @@ export const useMealDiary = (userPhone: string) => {
     isLoading, 
     isError 
   } = useQuery({
-    queryKey: ['mealDiary', userPhone],
+    queryKey: ['mealDiary', phone],
     queryFn: async (): Promise<Meal[]> => {
       console.log('=== DEBUGGING MEAL DIARY ===')
       console.log('1. Fetching meals for phone:', userPhone)
@@ -75,7 +77,7 @@ export const useMealDiary = (userPhone: string) => {
           gorduras,
           usuario_telefone
         `)
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
         .order('data_consumo', { ascending: false })
         .order('hora_consumo', { ascending: false })
 
@@ -107,7 +109,7 @@ export const useMealDiary = (userPhone: string) => {
 
       return mappedData
     },
-    enabled: !!userPhone,
+    enabled: !!phone,
   })
 
   // Delete meal mutation
@@ -117,15 +119,15 @@ export const useMealDiary = (userPhone: string) => {
         .from('registros_alimentares')
         .delete()
         .eq('id', mealId)
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
 
       if (error) {
         throw error
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mealDiary', userPhone] })
-      queryClient.invalidateQueries({ queryKey: ['todaysMeals', userPhone] })
+      queryClient.invalidateQueries({ queryKey: ['mealDiary', phone] })
+      queryClient.invalidateQueries({ queryKey: ['todaysMeals', phone] })
       toast.success('Refeição removida com sucesso!')
     },
     onError: (error) => {
@@ -148,15 +150,15 @@ export const useMealDiary = (userPhone: string) => {
         .from('registros_alimentares')
         .update(payload)
         .eq('id', updated.id)
-        .eq('usuario_telefone', userPhone)
+        .eq('usuario_telefone', phone)
 
       if (error) {
         throw error
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mealDiary', userPhone] })
-      queryClient.invalidateQueries({ queryKey: ['todaysMeals', userPhone] })
+      queryClient.invalidateQueries({ queryKey: ['mealDiary', phone] })
+      queryClient.invalidateQueries({ queryKey: ['todaysMeals', phone] })
       toast.success('Refeição atualizada!')
     },
     onError: (error: any) => {

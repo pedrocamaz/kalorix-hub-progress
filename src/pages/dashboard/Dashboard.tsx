@@ -26,8 +26,8 @@ const Dashboard = () => {
     );
   }
 
-  // Error state
-  if (isError || !dietData) {
+  // Error state (apenas quando a query realmente falha)
+  if (isError) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-4">
@@ -42,7 +42,7 @@ const Dashboard = () => {
 
   // Calculate values from real data - converting strings to numbers
   const caloriesConsumed = consumedTotals.calorias;
-  const caloriesGoal = parseFloat(dietData.calorias_diarias);
+  const caloriesGoal = dietData ? parseFloat(dietData.calorias_diarias) : 0;
   const caloriesRemaining = caloriesGoal - caloriesConsumed;
   const progressPercent = caloriesGoal > 0 ? (caloriesConsumed / caloriesGoal) * 100 : 0;
 
@@ -50,21 +50,21 @@ const Dashboard = () => {
     { 
       name: "Proteínas", 
       consumed: Math.round(consumedTotals.proteinas), 
-      goal: parseFloat(dietData.proteina_gramas), 
+      goal: dietData ? parseFloat(dietData.proteina_gramas) : 0, 
       color: "protein", 
       unit: "g" 
     },
     { 
       name: "Carboidratos", 
       consumed: Math.round(consumedTotals.carboidratos), 
-      goal: parseFloat(dietData.carboidrato_gramas), 
+      goal: dietData ? parseFloat(dietData.carboidrato_gramas) : 0, 
       color: "carbs", 
       unit: "g" 
     },
     { 
       name: "Gorduras", 
       consumed: Math.round(consumedTotals.gorduras), 
-      goal: parseFloat(dietData.gordura_gramas), 
+      goal: dietData ? parseFloat(dietData.gordura_gramas) : 0, 
       color: "fats", 
       unit: "g" 
     },
@@ -111,7 +111,7 @@ const Dashboard = () => {
                 <span className="text-2xl ml-2">kcal</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                TMB: {dietData.gasto_basal} kcal • NEAT: {dietData.neat} kcal
+                TMB: {dietData ? dietData.gasto_basal : 0} kcal • NEAT: {dietData ? dietData.neat : 0} kcal
               </p>
             </div>
 
@@ -137,15 +137,16 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-1 h-8 rounded-full overflow-hidden">
-            {macros.map((macro) => (
-              <div
-                key={macro.name}
-                className={`bg-${macro.color}`}
-                style={{ 
-                  width: `${(macro.goal / (macros.reduce((sum, m) => sum + m.goal, 0))) * 100}%` 
-                }}
-              />
-            ))}
+            {(() => {
+              const total = macros.reduce((sum, m) => sum + m.goal, 0);
+              return macros.map((macro) => (
+                <div
+                  key={macro.name}
+                  className={`bg-${macro.color}`}
+                  style={{ width: total > 0 ? `${(macro.goal / total) * 100}%` : '0%' }}
+                />
+              ));
+            })()}
           </div>
 
           {macros.map((macro) => (
@@ -160,7 +161,7 @@ const Dashboard = () => {
                   <div>
                     <p className="font-medium">{macro.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {macro.goal > 0 ? Math.round((macro.goal / caloriesGoal) * 100) : 0}% das calorias
+                      {caloriesGoal > 0 ? Math.round((macro.goal / caloriesGoal) * 100) : 0}% das calorias
                     </p>
                   </div>
                 </div>

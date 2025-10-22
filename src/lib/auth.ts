@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { normalizePhone } from "@/lib/phone";
 
 export async function createMagicLink(phone: string): Promise<string> {
   const token = crypto.randomUUID();
@@ -36,13 +37,13 @@ export async function verifyMagicLinkToken(token: string): Promise<{ phone: stri
     return null;
   }
 
-  const phone = (data as any).phone ?? (data as any).telefone;
+  const phone = (data as any).phone;
   const expiresAt = new Date(data.expires_at).getTime();
   const isExpired = Number.isFinite(expiresAt) ? expiresAt < Date.now() : true;
   const isUsed = !!data.used_at;
 
   if (!phone) {
-    console.warn("verifyMagicLinkToken: missing phone/telefone column");
+    console.warn("verifyMagicLinkToken: missing phone column");
     return null;
   }
   if (isExpired || isUsed) {
@@ -53,12 +54,14 @@ export async function verifyMagicLinkToken(token: string): Promise<{ phone: stri
   const { error: updateError } = await supabase
     .from("magic_links")
     .update({ used_at: new Date().toISOString() })
-    .eq("token", token);
+    .eq("token", token)
+    .is("used_at", null);
 
   if (updateError) {
     console.error("verifyMagicLinkToken: update used_at error", updateError);
-    // Ainda assim seguimos, para não bloquear login por falha de marcação
+    return null;
   }
 
-  return { phone };
+  // Retorna telefone normalizado para salvar na sessão
+  return { phone: normalizePhone(phone) };
 }
