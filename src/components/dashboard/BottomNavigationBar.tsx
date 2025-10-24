@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Utensils, CalendarDays, User } from "lucide-react";
+import { LayoutDashboard, Utensils, CalendarDays, User, Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BottomNavigationBar = () => {
@@ -42,6 +42,19 @@ export const BottomNavigationBar = () => {
       >
         <CalendarDays className="h-5 w-5 mb-1" />
         <span>Relatórios</span>
+      </NavLink>
+
+      <NavLink
+        to="/dashboard/workouts"
+        className={({ isActive }) =>
+          cn(
+            "flex flex-col items-center text-xs text-muted-foreground p-2 rounded-md hover:bg-accent/50",
+            isActive && "text-primary font-medium"
+          )
+        }
+      >
+        <Dumbbell className="h-5 w-5 mb-1" />
+        <span>Treinos</span>
       </NavLink>
 
       <NavLink

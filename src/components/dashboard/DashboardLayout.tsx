@@ -1,6 +1,12 @@
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FileText, Utensils, User } from "lucide-react";
+import {
+  LayoutDashboard,
+  FileText,
+  Utensils,
+  User,
+  Dumbbell,
+} from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import BottomNavigationBar from "./BottomNavigationBar";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -13,6 +19,7 @@ export const DashboardLayout = () => {
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Relatórios", path: "/dashboard/reports", icon: FileText },
     { name: "Diário de Refeições", path: "/dashboard/meals", icon: Utensils },
+    { name: "Treinos", path: "/dashboard/workouts", icon: Dumbbell },
     { name: "Meu Perfil", path: "/dashboard/profile", icon: User },
   ];
 
