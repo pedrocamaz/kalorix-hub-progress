@@ -17,7 +17,7 @@ const WorkoutLogPage = () => {
   const { profile, isLoading: loadingProfile } = useProfile(userPhone);
 
   const [date, setDate] = useState<string>(formatYMD(new Date()));
-  const { workoutsQuery, addWorkoutMutation } = useWorkoutLog(profile?.id, date);
+  const { workoutsQuery, addWorkoutMutation } = useWorkoutLog(userPhone, date);
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", duration_minutes: "", calories_burned: "" });
@@ -28,7 +28,7 @@ const WorkoutLogPage = () => {
 
     addWorkoutMutation.mutate(
       {
-        user_id: profile.id,
+        phone: userPhone,
         date,
         name: form.name.trim(),
         duration_minutes: parseInt(form.duration_minutes || "0", 10),

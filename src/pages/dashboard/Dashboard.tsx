@@ -18,7 +18,7 @@ const Dashboard = () => {
 
   const { profile } = useProfile(userPhone);
   const today = new Date().toISOString().split('T')[0];
-  const { workoutsQuery } = useWorkoutLog(profile?.id, today);
+  const { workoutsQuery } = useWorkoutLog(userPhone, today);
 
   // Loading state
   if (isLoading) {
