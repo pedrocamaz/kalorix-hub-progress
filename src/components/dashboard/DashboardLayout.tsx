@@ -62,7 +62,8 @@ export const DashboardLayout = () => {
                 rel="noopener noreferrer"
                 className="block mt-2"
               >
-                <Button variant="default" className="w-full justify-start">
+                {/* Troca de default (primário/laranja) para ghost (padrão) */}
+                <Button variant="ghost" className="w-full justify-start">
                   <Camera className="mr-3 h-5 w-5" />
                   Registrar (WhatsApp)
                 </Button>

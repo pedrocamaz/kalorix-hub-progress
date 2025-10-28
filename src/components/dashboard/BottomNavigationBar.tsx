@@ -7,6 +7,7 @@ export const BottomNavigationBar = () => {
     <nav className="fixed bottom-0 left-0 right-0 h-20 bg-background border-t border-border flex items-center justify-around md:hidden z-50">
       <NavLink
         to="/dashboard"
+        end
         className={({ isActive }) =>
           cn(
             "flex flex-col items-center text-xs text-muted-foreground p-2 rounded-md hover:bg-accent/50",
@@ -65,7 +66,7 @@ export const BottomNavigationBar = () => {
         className={cn("flex flex-col items-center text-xs text-muted-foreground p-2 rounded-md hover:bg-accent/50")}
         aria-label="Registrar alimento no WhatsApp"
       >
-        <Camera className="h-5 w-5 mb-1 text-primary" />
+        <Camera className="h-5 w-5 mb-1" />
         <span>Registrar</span>
       </a>
 
