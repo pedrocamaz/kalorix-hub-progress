@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Utensils, CalendarDays, User, Dumbbell } from "lucide-react";
+import { LayoutDashboard, Utensils, CalendarDays, User, Dumbbell, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BottomNavigationBar = () => {
@@ -56,6 +56,18 @@ export const BottomNavigationBar = () => {
         <Dumbbell className="h-5 w-5 mb-1" />
         <span>Treinos</span>
       </NavLink>
+
+      {/* Novo botão: Registrar (WhatsApp) */}
+      <a
+        href="https://api.whatsapp.com/send/?phone=5521982482829"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn("flex flex-col items-center text-xs text-muted-foreground p-2 rounded-md hover:bg-accent/50")}
+        aria-label="Registrar alimento no WhatsApp"
+      >
+        <Camera className="h-5 w-5 mb-1 text-primary" />
+        <span>Registrar</span>
+      </a>
 
       <NavLink
         to="/dashboard/profile"

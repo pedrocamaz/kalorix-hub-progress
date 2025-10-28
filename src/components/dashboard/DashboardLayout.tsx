@@ -6,6 +6,7 @@ import {
   Utensils,
   User,
   Dumbbell,
+  Camera, // novo
 } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import BottomNavigationBar from "./BottomNavigationBar";
@@ -53,6 +54,19 @@ export const DashboardLayout = () => {
                   </Button>
                 </Link>
               ))}
+
+              {/* Novo botão: Registrar (WhatsApp) */}
+              <a
+                href="https://api.whatsapp.com/send/?phone=5521982482829"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mt-2"
+              >
+                <Button variant="default" className="w-full justify-start">
+                  <Camera className="mr-3 h-5 w-5" />
+                  Registrar (WhatsApp)
+                </Button>
+              </a>
             </nav>
           </div>
         </aside>
