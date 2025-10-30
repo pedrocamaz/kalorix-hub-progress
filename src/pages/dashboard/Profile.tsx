@@ -287,7 +287,7 @@ const Profile = () => {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-primary">R$ 29,90</p>
+              <p className="text-2xl font-bold text-primary">R$ 27,90</p>
               <p className="text-xs text-muted-foreground">/mês</p>
             </div>
           </div>
