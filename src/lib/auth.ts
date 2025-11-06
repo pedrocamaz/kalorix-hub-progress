@@ -96,12 +96,12 @@ export interface NutritionistProfile {
 
 /**
  * Cadastra um novo nutricionista no sistema
- * Cria usuário no Supabase Auth e perfil na tabela nutritionists
+ * Cria usuário no Supabase Auth - o perfil é criado via RPC no frontend
  */
 export async function signUpNutritionist(data: NutritionistSignupData) {
-  const { email, password, fullName, crn, phone, specialization } = data;
+  const { email, password, fullName } = data;
 
-  // 1. Criar usuário no Supabase Auth
+  // Criar usuário no Supabase Auth
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
@@ -122,33 +122,6 @@ export async function signUpNutritionist(data: NutritionistSignupData) {
     throw new Error("Falha ao criar usuário");
   }
 
-  // 2. Criar registro na tabela users (usando upsert para evitar conflito)
-  // Garante que telefone seja único usando timestamp se não fornecido
-  const userPhone = phone || `NUTR-${authData.user.id.substring(0, 8)}`;
-  
-  const { error: userError } = await supabase
-    .from('users')
-    .upsert({
-      id: authData.user.id,
-      email,
-      nome: fullName,
-      telefone: userPhone,
-      user_type: 'nutritionist',
-    }, {
-      onConflict: 'id'
-    });
-
-  if (userError) {
-    console.error("Error creating user record:", userError);
-    // Continua mesmo com erro - o registro pode já existir
-  }
-
-  // 3. Aguardar um pouco para garantir que a sessão foi estabelecida
-  await new Promise(resolve => setTimeout(resolve, 500));
-
-  // 4. Criar perfil de nutricionista diretamente (será criado automaticamente ao adicionar cliente)
-  // A função add_client_by_share_code cria o perfil se não existir
-  
   return authData;
 }
 

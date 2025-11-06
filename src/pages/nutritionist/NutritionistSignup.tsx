@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Lock, User, Phone, Stethoscope, GraduationCap } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useNutritionistAuth } from '@/hooks/useNutritionistAuth';
+import { supabase } from '@/lib/supabaseClient';
+import { toast } from 'sonner';
 
 export default function NutritionistSignup() {
   const [formData, setFormData] = useState({
@@ -19,7 +20,9 @@ export default function NutritionistSignup() {
     specialization: '',
   });
   
-  const { signUp, loading } = useNutritionistAuth();
+  const [loading, setLoading] = useState(false);
+  const [lastSubmit, setLastSubmit] = useState<number>(0);
+  const navigate = useNavigate();
 
   const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({ ...prev, [field]: e.target.value }));
@@ -27,38 +30,133 @@ export default function NutritionistSignup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validações
-    if (formData.password !== formData.confirmPassword) {
-      alert('As senhas não coincidem');
+    
+    // Rate limiting protection
+    const now = Date.now();
+    if (now - lastSubmit < 5000) { // 5 segundos entre submissões
+      toast.error('Aguarde alguns segundos antes de tentar novamente.');
       return;
     }
+    setLastSubmit(now);
+    
+    setLoading(true);
 
-    if (formData.password.length < 6) {
-      alert('A senha deve ter no mínimo 6 caracteres');
-      return;
-    }
+    try {
+      // Validações
+      if (formData.password !== formData.confirmPassword) {
+        toast.error('As senhas não coincidem');
+        return;
+      }
 
-    const success = await signUp({
-      email: formData.email,
-      password: formData.password,
-      fullName: formData.fullName,
-      crn: formData.crn || undefined,
-      phone: formData.phone || undefined,
-      specialization: formData.specialization || undefined,
-    });
+      if (formData.password.length < 6) {
+        toast.error('A senha deve ter no mínimo 6 caracteres');
+        return;
+      }
 
-    if (success) {
-      // Limpa o formulário
-      setFormData({
-        fullName: '',
-        email: '',
-        password: '',
-        confirmPassword: '',
-        crn: '',
-        phone: '',
-        specialization: '',
+      if (!formData.fullName.trim() || !formData.email.trim()) {
+        toast.error('Nome completo e email são obrigatórios');
+        return;
+      }
+
+      // 1. Criar usuário no Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: formData.password,
+        options: {
+          data: {
+            user_type: 'nutritionist',
+            full_name: formData.fullName.trim(),
+          }
+        }
       });
+
+      if (authError) {
+        console.error("Erro no signup do Supabase Auth:", authError);
+        
+        // Mensagens de erro personalizadas
+        if (authError.message?.includes('already registered')) {
+          toast.error('Este email já está cadastrado.');
+        } else if (authError.message?.includes('Invalid email')) {
+          toast.error('Email inválido.');
+        } else if (authError.message?.includes('Password')) {
+          toast.error('A senha deve ter no mínimo 6 caracteres.');
+        } else {
+          toast.error(authError.message || 'Erro ao criar conta. Tente novamente.');
+        }
+        return;
+      }
+
+      // 2. Verificar se o usuário foi criado
+      if (!authData.user) {
+        toast.error('Falha ao criar usuário. Tente novamente.');
+        return;
+      }
+
+      console.log('Usuário criado no Auth:', authData.user.id);
+
+      // 3. Criar registro completo (users + nutritionists)
+      try {
+        console.log('Criando perfil completo de nutricionista...');
+        
+        // Gerar telefone único para nutricionista
+        const nutriTelefone = formData.phone?.trim() || `NUTR${authData.user.id.substring(0, 8)}`;
+        
+        const { data: rpcResult, error: rpcError } = await supabase
+          .rpc('create_nutritionist_complete_profile', {
+            p_user_id: authData.user.id,
+            p_email: formData.email.trim(),
+            p_full_name: formData.fullName.trim(),
+            p_telefone: nutriTelefone,
+            p_crn: formData.crn.trim() || null,
+            p_phone: formData.phone.trim() || null,
+            p_specialization: formData.specialization.trim() || null,
+          });
+
+        if (rpcError) {
+          console.error("Erro ao criar perfil completo:", rpcError);
+          throw rpcError;
+        }
+
+        const result = typeof rpcResult === 'string' ? JSON.parse(rpcResult) : rpcResult;
+        
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+
+        console.log('Perfil completo criado:', result);
+
+        // 4. Sucesso total
+        toast.success('Conta criada com sucesso! Verifique seu email para confirmar.');
+        
+        // 5. Limpar formulário
+        setFormData({
+          fullName: '',
+          email: '',
+          password: '',
+          confirmPassword: '',
+          crn: '',
+          phone: '',
+          specialization: '',
+        });
+
+        // 6. Redirecionar para login após delay
+        setTimeout(() => {
+          navigate('/nutritionist/login');
+        }, 2000);
+
+      } catch (profileError) {
+        console.error("Erro inesperado ao criar perfil:", profileError);
+        toast.error('Erro inesperado ao criar perfil. Contate o suporte.');
+        
+        // Tentar fazer logout para limpar sessão órfã
+        await supabase.auth.signOut();
+      }
+
+    } catch (error: any) {
+      console.error("Erro geral no signup:", error);
+      toast.error('Erro inesperado. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -107,6 +205,7 @@ export default function NutritionistSignup() {
                       className="pl-9"
                       value={formData.fullName}
                       onChange={handleChange('fullName')}
+                      autoComplete="name"
                       required
                     />
                   </div>
@@ -114,7 +213,7 @@ export default function NutritionistSignup() {
 
                 {/* Email */}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">Email Profissional *</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -124,8 +223,8 @@ export default function NutritionistSignup() {
                       className="pl-9"
                       value={formData.email}
                       onChange={handleChange('email')}
-                      required
                       autoComplete="email"
+                      required
                     />
                   </div>
                 </div>
@@ -191,9 +290,9 @@ export default function NutritionistSignup() {
                       className="pl-9"
                       value={formData.password}
                       onChange={handleChange('password')}
+                      autoComplete="new-password"
                       required
                       minLength={6}
-                      autoComplete="new-password"
                     />
                   </div>
                 </div>
@@ -206,13 +305,13 @@ export default function NutritionistSignup() {
                     <Input
                       id="confirmPassword"
                       type="password"
-                      placeholder="Digite a senha novamente"
+                      placeholder="Confirme sua senha"
                       className="pl-9"
                       value={formData.confirmPassword}
                       onChange={handleChange('confirmPassword')}
+                      autoComplete="new-password"
                       required
                       minLength={6}
-                      autoComplete="new-password"
                     />
                   </div>
                 </div>
