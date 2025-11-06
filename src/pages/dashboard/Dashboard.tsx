@@ -1,7 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Apple, Flame, Loader2 } from "lucide-react";
+import { Apple, Flame, Loader2, Dumbbell } from "lucide-react";
 import { useDashboardData } from "@/hooks/useDashboardData";
+import { useProfile } from "@/hooks/useProfile";
+import { useWorkoutLog } from "@/hooks/useWorkoutLog";
 
 const Dashboard = () => {
   const userPhone = localStorage.getItem('sessionPhone') || '';
@@ -13,6 +15,10 @@ const Dashboard = () => {
     isLoading, 
     isError 
   } = useDashboardData(userPhone);
+
+  const { profile } = useProfile(userPhone);
+  const today = new Date().toISOString().split('T')[0];
+  const { workoutsQuery } = useWorkoutLog(userPhone, today);
 
   // Loading state
   if (isLoading) {
@@ -216,6 +222,44 @@ const Dashboard = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Treinos de Hoje */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Dumbbell className="h-5 w-5 text-primary" />
+            Treinos de Hoje
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {workoutsQuery.isLoading ? (
+            <div className="text-muted-foreground">Carregando treinos...</div>
+          ) : workoutsQuery.isError ? (
+            <div className="text-destructive">Erro ao carregar treinos</div>
+          ) : (workoutsQuery.data?.length ?? 0) === 0 ? (
+            <div className="text-muted-foreground">Nenhum treino registrado hoje</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
+                <span className="font-medium">Calorias queimadas</span>
+                <span className="font-semibold text-primary">
+                  {workoutsQuery.data!.reduce((s, w) => s + (w.calories_burned || 0), 0)} kcal
+                </span>
+              </div>
+              <div className="space-y-2">
+                {workoutsQuery.data!.map((w) => (
+                  <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
+                    <span className="font-medium">{w.name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {w.duration_minutes} min • {w.calories_burned} kcal
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
