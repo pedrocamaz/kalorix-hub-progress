@@ -2,6 +2,31 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
+interface SupabaseUser {
+  id: string;
+  nome: string;
+  telefone: string;
+  email: string;
+  share_code: string;
+  peso: number;
+  altura: number;
+  imc: number;
+  idade: number;
+  sexo: string;
+  objetivo: string;
+}
+
+interface NutritionistClientRelationship {
+  id: string;
+  client_id: string;
+  added_at: string;
+  notes: string;
+  tags: string[];
+  is_active: boolean;
+  last_viewed_at: string;
+  users: SupabaseUser | SupabaseUser[]; // Could be array or single object
+}
+
 export interface ClientDetail {
   client_id: string;
   client_name: string;
@@ -34,7 +59,7 @@ export interface DashboardSummary {
 }
 
 /**
- * Hook para gerenciar clientes do nutricionista
+ * Hook para gerenciar clientes do nutricionista - CORRIGIDO para isolamento
  */
 export function useNutritionistClients() {
   const [clients, setClients] = useState<ClientDetail[]>([]);
@@ -43,7 +68,7 @@ export function useNutritionistClients() {
   const [refreshing, setRefreshing] = useState(false);
 
   /**
-   * Busca a lista de clientes do nutricionista
+   * Busca a lista de clientes APENAS do nutricionista logado
    */
   const fetchClients = useCallback(async () => {
     try {
@@ -53,18 +78,119 @@ export function useNutritionistClients() {
         throw new Error('Usuário não autenticado');
       }
 
-      // Busca detalhes dos clientes via view
-      const { data, error } = await supabase
-        .from('nutritionist_client_details')
-        .select('*')
-        .order('added_at', { ascending: false });
+      // 1. Primeiro, busca o ID do nutricionista logado
+      const { data: nutritionistData, error: nutritionistError } = await supabase
+        .from('nutritionists')
+        .select('id, full_name')
+        .eq('user_id', user.id)
+        .single();
 
-      if (error) throw error;
+      if (nutritionistError || !nutritionistData) {
+        console.error('Nutricionista não encontrado:', nutritionistError);
+        setClients([]);
+        return;
+      }
 
-      setClients(data || []);
+      // 2. Busca APENAS clientes vinculados a este nutricionista
+      const { data: relationshipsData, error: relationshipsError } = await supabase
+        .from('nutritionist_clients')
+        .select(`
+          id,
+          client_id,
+          added_at,
+          notes,
+          tags,
+          is_active,
+          last_viewed_at,
+          users!inner (
+            id,
+            nome,
+            telefone,
+            email,
+            share_code,
+            peso,
+            altura,
+            imc,
+            idade,
+            sexo,
+            objetivo
+          )
+        `)
+        .eq('nutritionist_id', nutritionistData.id)
+        .eq('is_active', true);
+
+      if (relationshipsError) {
+        throw relationshipsError;
+      }
+
+      // 3. Para cada cliente, busca métricas alimentares dos últimos 7 dias
+      const clientsWithMetrics = await Promise.all(
+        (relationshipsData || []).map(async (relationship) => {
+          // Fix: Access the first (and only) user object from the array
+          const client = Array.isArray(relationship.users) 
+            ? relationship.users[0] 
+            : relationship.users;
+          
+          if (!client) {
+            console.warn('Client data not found for relationship:', relationship.id);
+            return null;
+          }
+          
+          // Busca registros alimentares dos últimos 7 dias deste cliente
+          const { data: mealsData } = await supabase
+            .from('registros_alimentares')
+            .select('calorias, data_consumo')
+            .eq('usuario_id', client.id)
+            .gte('data_consumo', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+            .order('data_consumo', { ascending: false });
+
+          // Última refeição
+          const { data: lastMeal } = await supabase
+            .from('registros_alimentares')
+            .select('data_consumo')
+            .eq('usuario_id', client.id)
+            .order('data_consumo', { ascending: false })
+            .limit(1)
+            .maybeSingle(); // Use maybeSingle() instead of single() to avoid errors when no data
+
+          // Calcula métricas
+          const totalMeals = mealsData?.length || 0;
+          const avgCalories = totalMeals > 0 
+            ? (mealsData?.reduce((sum, meal) => sum + (meal.calorias || 0), 0) || 0) / totalMeals
+            : 0;
+
+          return {
+            client_id: client.id,
+            client_name: client.nome || 'Nome não informado',
+            client_phone: client.telefone || '',
+            client_email: client.email || '',
+            share_code: client.share_code || '',
+            current_weight: client.peso || 0,
+            height: client.altura || 0,
+            imc: client.imc || 0,
+            age: client.idade || 0,
+            gender: client.sexo || '',
+            goal: client.objetivo || '',
+            added_at: relationship.added_at,
+            notes: relationship.notes || '',
+            tags: relationship.tags || [],
+            is_active: relationship.is_active,
+            last_viewed_at: relationship.last_viewed_at || '',
+            last_meal_date: lastMeal?.data_consumo || '',
+            meals_last_7_days: totalMeals,
+            avg_calories_last_7_days: Math.round(avgCalories),
+          } as ClientDetail;
+        })
+      );
+
+      // Filter out null values (clients without proper data)
+      const validClients = clientsWithMetrics.filter(client => client !== null) as ClientDetail[];
+      setClients(validClients);
+
     } catch (error: any) {
       console.error('Error fetching clients:', error);
       toast.error('Erro ao carregar lista de clientes');
+      setClients([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -72,18 +198,66 @@ export function useNutritionistClients() {
   }, []);
 
   /**
-   * Busca resumo do dashboard
+   * Busca resumo do dashboard APENAS do nutricionista logado
    */
   const fetchSummary = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('nutritionist_dashboard_summary')
-        .select('*')
-        .maybeSingle();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) return;
 
-      if (error) throw error;
+      // 1. Busca dados do nutricionista
+      const { data: nutritionistData } = await supabase
+        .from('nutritionists')
+        .select('id, full_name')
+        .eq('user_id', user.id)
+        .single();
 
-      setSummary(data);
+      if (!nutritionistData) return;
+
+      // 2. Busca clientes ativos deste nutricionista
+      const { data: activeClients } = await supabase
+        .from('nutritionist_clients')
+        .select('client_id, users!inner(id)')
+        .eq('nutritionist_id', nutritionistData.id)
+        .eq('is_active', true);
+
+      const clientIds = activeClients?.map(rel => rel.client_id) || [];
+
+      if (clientIds.length === 0) {
+        setSummary({
+          nutritionist_id: nutritionistData.id,
+          nutritionist_name: nutritionistData.full_name,
+          active_clients_count: 0,
+          total_clients_count: 0,
+          total_meals_week: 0,
+          avg_calories_week: 0,
+        });
+        return;
+      }
+
+      // 3. Busca métricas dos últimos 7 dias APENAS dos clientes deste nutricionista
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      const { data: mealsData } = await supabase
+        .from('registros_alimentares')
+        .select('calorias')
+        .in('usuario_id', clientIds)
+        .gte('data_consumo', weekAgo);
+
+      const totalMealsWeek = mealsData?.length || 0;
+      const totalCaloriesWeek = mealsData?.reduce((sum, meal) => sum + (meal.calorias || 0), 0) || 0;
+      const avgCaloriesWeek = totalMealsWeek > 0 ? totalCaloriesWeek / totalMealsWeek : 0;
+
+      setSummary({
+        nutritionist_id: nutritionistData.id,
+        nutritionist_name: nutritionistData.full_name,
+        active_clients_count: clientIds.length,
+        total_clients_count: clientIds.length,
+        total_meals_week: totalMealsWeek,
+        avg_calories_week: Math.round(avgCaloriesWeek),
+      });
+
     } catch (error: any) {
       console.error('Error fetching summary:', error);
     }
