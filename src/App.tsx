@@ -12,6 +12,11 @@ import MealDiary from "./pages/dashboard/MealDiary";
 import Profile from "./pages/dashboard/Profile";
 import NotFound from "./pages/NotFound";
 import AuthCallback from "./pages/AuthCallback";
+// Nutritionist pages
+import NutritionistLogin from "./pages/nutritionist/NutritionistLogin";
+import NutritionistSignup from "./pages/nutritionist/NutritionistSignup";
+import NutritionistDashboard from "./pages/nutritionist/NutritionistDashboard";
+import ClientDetail from "./pages/nutritionist/ClientDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +43,13 @@ const App = () => (
             <Route path="profile" element={<Profile />} />
           </Route>
           <Route path="/auth/callback" element={<AuthCallback />} />
+          
+          {/* Nutritionist Routes */}
+          <Route path="/nutritionist/login" element={<NutritionistLogin />} />
+          <Route path="/nutritionist/signup" element={<NutritionistSignup />} />
+          <Route path="/nutritionist/dashboard" element={<NutritionistDashboard />} />
+          <Route path="/nutritionist/client/:clientId" element={<ClientDetail />} />
+          
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

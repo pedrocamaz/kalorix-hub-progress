@@ -65,3 +65,181 @@ export async function verifyMagicLinkToken(token: string): Promise<{ phone: stri
   // Retorna telefone normalizado para salvar na sessão
   return { phone: normalizePhone(phone) };
 }
+
+// ==============================================
+// AUTENTICAÇÃO DE NUTRICIONISTAS
+// ==============================================
+
+export interface NutritionistSignupData {
+  email: string;
+  password: string;
+  fullName: string;
+  crn?: string;
+  phone?: string;
+  specialization?: string;
+}
+
+export interface NutritionistProfile {
+  id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  crn?: string;
+  specialization?: string;
+  phone?: string;
+  profile_image_url?: string;
+  bio?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Cadastra um novo nutricionista no sistema
+ * Cria usuário no Supabase Auth e perfil na tabela nutritionists
+ */
+export async function signUpNutritionist(data: NutritionistSignupData) {
+  const { email, password, fullName, crn, phone, specialization } = data;
+
+  // 1. Criar usuário no Supabase Auth
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        user_type: 'nutritionist',
+        full_name: fullName,
+      }
+    }
+  });
+
+  if (authError) {
+    console.error("Error signing up nutritionist:", authError);
+    throw authError;
+  }
+
+  if (!authData.user) {
+    throw new Error("Falha ao criar usuário");
+  }
+
+  // 2. Criar registro na tabela users (usando upsert para evitar conflito)
+  // Garante que telefone seja único usando timestamp se não fornecido
+  const userPhone = phone || `NUTR-${authData.user.id.substring(0, 8)}`;
+  
+  const { error: userError } = await supabase
+    .from('users')
+    .upsert({
+      id: authData.user.id,
+      email,
+      nome: fullName,
+      telefone: userPhone,
+      user_type: 'nutritionist',
+    }, {
+      onConflict: 'id'
+    });
+
+  if (userError) {
+    console.error("Error creating user record:", userError);
+    // Continua mesmo com erro - o registro pode já existir
+  }
+
+  // 3. Aguardar um pouco para garantir que a sessão foi estabelecida
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  // 4. Criar perfil de nutricionista diretamente (será criado automaticamente ao adicionar cliente)
+  // A função add_client_by_share_code cria o perfil se não existir
+  
+  return authData;
+}
+
+/**
+ * Faz login de nutricionista via email/senha
+ */
+export async function signInNutritionist(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    console.error("Error signing in nutritionist:", error);
+    throw error;
+  }
+
+  // Verificar se é realmente um nutricionista
+  const userType = data.user?.user_metadata?.user_type;
+  if (userType !== 'nutritionist') {
+    // Fazer logout se não for nutricionista
+    await supabase.auth.signOut();
+    throw new Error('Esta conta não é de um nutricionista. Use o login via WhatsApp.');
+  }
+
+  return data;
+}
+
+/**
+ * Retorna o tipo de usuário logado
+ */
+export async function getUserRole(): Promise<'client' | 'nutritionist' | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) return null;
+  
+  return user.user_metadata?.user_type || 'client';
+}
+
+/**
+ * Busca o perfil completo do nutricionista logado
+ */
+export async function getNutritionistProfile(): Promise<NutritionistProfile | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('nutritionists')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching nutritionist profile:", error);
+    return null;
+  }
+
+  return data;
+}
+
+/**
+ * Atualiza o perfil do nutricionista
+ */
+export async function updateNutritionistProfile(
+  updates: Partial<Pick<NutritionistProfile, 'full_name' | 'crn' | 'specialization' | 'phone' | 'bio' | 'profile_image_url'>>
+) {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    throw new Error('Usuário não autenticado');
+  }
+
+  const { error } = await supabase
+    .from('nutritionists')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error("Error updating nutritionist profile:", error);
+    throw error;
+  }
+}
+
+/**
+ * Verifica se o usuário atual é um nutricionista
+ */
+export async function isNutritionist(): Promise<boolean> {
+  const role = await getUserRole();
+  return role === 'nutritionist';
+}

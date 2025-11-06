@@ -15,6 +15,8 @@ interface UserProfile {
   nivel_atividade: string
   objetivo: string
   assinatura_ativa: boolean
+  share_code?: string | null  // Código de compartilhamento para nutricionistas
+  user_type?: string | null    // Tipo de usuário (client/nutritionist)
 }
 
 export const useProfile = (userPhone: string) => {
@@ -43,7 +45,9 @@ export const useProfile = (userPhone: string) => {
           sexo,
           nivel_atividade,
           objetivo,
-          assinatura_ativa
+          assinatura_ativa,
+          share_code,
+          user_type
         `)
         .eq('telefone', phone)
         .maybeSingle()
