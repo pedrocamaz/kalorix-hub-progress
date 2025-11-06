@@ -98,11 +98,44 @@ export const useDashboardData = (userPhone: string) => {
     })
   }
 
+  // Fetch today's exercises (calorias queimadas)
+  const {
+    data: todaysExercises,
+    isLoading: isExercisesLoading,
+    isError: isExercisesError,
+  } = useQuery({
+    queryKey: ['todaysExercises', phone, today],
+    queryFn: async (): Promise<{ calorias_queimadas: number; duracao_minutos: number; tipo_treino: string; }[]> => {
+      const { data, error } = await supabase
+        .from('registros_treino')
+        .select('calorias_queimadas, duracao_minutos, tipo_treino, data_treino')
+        .eq('usuario_telefone', phone)
+        .eq('data_treino', today)
+        .order('created_at', { ascending: true })
+      if (error) {
+        console.error('Error fetching exercises data:', error)
+        throw error
+      }
+      return (data || []) as any
+    },
+    enabled: !!phone,
+  })
+
+  // Sum exercise calories
+  let exerciseCalories = 0
+  if (todaysExercises && todaysExercises.length > 0) {
+    todaysExercises.forEach(e => {
+      exerciseCalories += Number(e.calorias_queimadas) || 0
+    })
+  }
+
   return {
     dietData,
     todaysMeals: todaysMeals || [],
+    todaysExercises: todaysExercises || [],
     consumedTotals,
-    isLoading: isDietLoading || isMealsLoading,
-    isError: isDietError || isMealsError,
+    exerciseCalories,
+    isLoading: isDietLoading || isMealsLoading || isExercisesLoading,
+    isError: isDietError || isMealsError || isExercisesError,
   }
 }

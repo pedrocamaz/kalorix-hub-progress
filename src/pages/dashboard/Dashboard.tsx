@@ -13,7 +13,8 @@ const Dashboard = () => {
     todaysMeals, 
     consumedTotals, 
     isLoading, 
-    isError 
+    isError,
+    exerciseCalories
   } = useDashboardData(userPhone);
 
   const { profile } = useProfile(userPhone);
@@ -51,6 +52,7 @@ const Dashboard = () => {
   const caloriesGoal = dietData ? parseFloat(dietData.calorias_diarias) : 0;
   const caloriesRemaining = caloriesGoal - caloriesConsumed;
   const progressPercent = caloriesGoal > 0 ? (caloriesConsumed / caloriesGoal) * 100 : 0;
+  const saldoAtualizado = -parseInt(dietData.saldo_hoje);
 
   const macros = [
     { 
@@ -112,10 +114,16 @@ const Dashboard = () => {
             </div>
             
             <div>
+              <div className="text-3xl md:text-4xl font-medium text-muted-foreground">
+                Meta (dieta): {caloriesGoal} kcal
+              </div>
               <div className="text-5xl md:text-6xl font-bold text-primary mb-2">
-                {caloriesGoal}
+                {caloriesGoal + (exerciseCalories || 0)}
                 <span className="text-2xl ml-2">kcal</span>
               </div>
+              <p className="text-sm text-muted-foreground">
+                (Inclui {exerciseCalories || 0} kcal de exercícios hoje)
+              </p>
               <p className="text-sm text-muted-foreground">
                 TMB: {dietData ? dietData.gasto_basal : 0} kcal • NEAT: {dietData ? dietData.neat : 0} kcal
               </p>
@@ -125,7 +133,7 @@ const Dashboard = () => {
               <div className="flex justify-between text-sm">
                 <span>Consumido: {caloriesConsumed} kcal</span>
                 <span className="font-semibold">
-                  Restante: {caloriesRemaining > 0 ? caloriesRemaining : 0} kcal
+                  Restante: {saldoAtualizado > 0 ? saldoAtualizado : 0} kcal
                 </span>
               </div>
               <Progress value={Math.min(progressPercent, 100)} className="h-3" />
