@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Dumbbell } from "lucide-react";
-import { useWorkoutLog } from "@/hooks/useWorkoutLog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Dumbbell, Edit, Trash2, Plus } from "lucide-react";
+import { useWorkoutLog, type Workout } from "@/hooks/useWorkoutLog";
 import { useProfile } from "@/hooks/useProfile";
 
 function formatYMD(d: Date) {
@@ -17,25 +18,89 @@ const WorkoutLogPage = () => {
   const { profile, isLoading: loadingProfile } = useProfile(userPhone);
 
   const [date, setDate] = useState<string>(formatYMD(new Date()));
-  const { workoutsQuery, addWorkoutMutation } = useWorkoutLog(userPhone, date);
+  const { workoutsQuery, addWorkoutMutation, updateWorkoutMutation, deleteWorkoutMutation } = useWorkoutLog(userPhone, date);
 
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", duration_minutes: "", calories_burned: "" });
+  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  const [form, setForm] = useState({ 
+    name: "", 
+    duration_minutes: "", 
+    intensity: "moderada", 
+    calories_burned: "" 
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile?.id) return;
 
-    addWorkoutMutation.mutate(
-      {
-        phone: userPhone,
-        date,
-        name: form.name.trim(),
-        duration_minutes: parseInt(form.duration_minutes || "0", 10),
-        calories_burned: parseInt(form.calories_burned || "0", 10),
-      },
-      { onSuccess: () => { setOpen(false); setForm({ name: "", duration_minutes: "", calories_burned: "" }); } }
-    );
+    if (editingWorkout) {
+      // Editar treino existente
+      updateWorkoutMutation.mutate(
+        {
+          id: editingWorkout.id,
+          name: form.name.trim(),
+          duration_minutes: parseInt(form.duration_minutes || "0", 10),
+          intensity: form.intensity,
+          calories_burned: parseInt(form.calories_burned || "0", 10),
+        },
+        { 
+          onSuccess: () => { 
+            setOpen(false); 
+            setEditingWorkout(null);
+            setForm({ name: "", duration_minutes: "", intensity: "moderada", calories_burned: "" }); 
+          } 
+        }
+      );
+    } else {
+      // Adicionar novo treino
+      addWorkoutMutation.mutate(
+        {
+          phone: userPhone,
+          date,
+          name: form.name.trim(),
+          duration_minutes: parseInt(form.duration_minutes || "0", 10),
+          intensity: form.intensity,
+          calories_burned: parseInt(form.calories_burned || "0", 10),
+        },
+        { 
+          onSuccess: () => { 
+            setOpen(false); 
+            setForm({ name: "", duration_minutes: "", intensity: "moderada", calories_burned: "" }); 
+          } 
+        }
+      );
+    }
+  };
+
+  const handleEdit = (workout: Workout) => {
+    setEditingWorkout(workout);
+    setForm({
+      name: workout.name,
+      duration_minutes: workout.duration_minutes.toString(),
+      intensity: workout.intensity,
+      calories_burned: workout.calories_burned.toString(),
+    });
+    setOpen(true);
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Tem certeza que deseja excluir este treino?")) {
+      deleteWorkoutMutation.mutate(id);
+    }
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setEditingWorkout(null);
+    setForm({ name: "", duration_minutes: "", intensity: "moderada", calories_burned: "" });
+  };
+
+  const getIntensityColor = (intensity: string) => {
+    switch (intensity) {
+      case "baixa": return "bg-green-100 text-green-800";
+      case "moderada": return "bg-yellow-100 text-yellow-800";
+      case "alta": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
   };
 
   const isLoading = loadingProfile || workoutsQuery.isLoading;
@@ -49,7 +114,7 @@ const WorkoutLogPage = () => {
           <p className="text-muted-foreground">Registre seus treinos e acompanhe suas calorias gastas</p>
         </div>
         <Button onClick={() => setOpen(true)}>
-          <Dumbbell className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-2" />
           Adicionar Treino
         </Button>
       </div>
@@ -80,13 +145,39 @@ const WorkoutLogPage = () => {
             <div className="space-y-3">
               {workoutsQuery.data!.map((w) => (
                 <Card key={w.id}>
-                  <CardContent className="py-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{w.name}</p>
-                      <p className="text-sm text-muted-foreground">{w.duration_minutes} min</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-primary">{w.calories_burned} kcal</p>
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <p className="font-medium text-lg">{w.name}</p>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getIntensityColor(w.intensity)}`}>
+                            {w.intensity}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>{w.duration_minutes} min</span>
+                          <span>•</span>
+                          <span>{w.calories_burned} kcal</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleEdit(w)}
+                          disabled={updateWorkoutMutation.isPending}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleDelete(w.id)}
+                          disabled={deleteWorkoutMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -96,32 +187,79 @@ const WorkoutLogPage = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(openState) => !openState && handleClose()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Novo Treino</DialogTitle>
-            <DialogDescription>Informe os detalhes do treino.</DialogDescription>
+            <DialogTitle>
+              {editingWorkout ? "Editar Treino" : "Novo Treino"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingWorkout ? "Atualize os detalhes do treino." : "Informe os detalhes do treino."}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <Label htmlFor="name">Nome do Treino</Label>
-              <Input id="name" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} required />
+              <Input 
+                id="name" 
+                value={form.name} 
+                onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} 
+                placeholder="Ex.: Musculação, Corrida, Natação"
+                required 
+              />
             </div>
+
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="duration">Duração (minutos)</Label>
-                <Input id="duration" type="number" min={0} value={form.duration_minutes}
-                  onChange={(e) => setForm((s) => ({ ...s, duration_minutes: e.target.value }))} required />
+                <Input 
+                  id="duration" 
+                  type="number" 
+                  min={1} 
+                  value={form.duration_minutes}
+                  onChange={(e) => setForm((s) => ({ ...s, duration_minutes: e.target.value }))} 
+                  required 
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="calories">Calorias Queimadas</Label>
-                <Input id="calories" type="number" min={0} value={form.calories_burned}
-                  onChange={(e) => setForm((s) => ({ ...s, calories_burned: e.target.value }))} required />
+                <Input 
+                  id="calories" 
+                  type="number" 
+                  min={1} 
+                  value={form.calories_burned}
+                  onChange={(e) => setForm((s) => ({ ...s, calories_burned: e.target.value }))} 
+                  required 
+                />
               </div>
             </div>
-            <DialogFooter>
-              <Button type="submit" disabled={addWorkoutMutation.isPending}>
-                {addWorkoutMutation.isPending ? "Salvando..." : "Salvar Treino"}
+
+            <div className="space-y-2">
+              <Label htmlFor="intensity">Intensidade</Label>
+              <Select value={form.intensity} onValueChange={(value) => setForm((s) => ({ ...s, intensity: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a intensidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="baixa">Baixa</SelectItem>
+                  <SelectItem value="moderada">Moderada</SelectItem>
+                  <SelectItem value="alta">Alta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={handleClose}>
+                Cancelar
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={addWorkoutMutation.isPending || updateWorkoutMutation.isPending}
+              >
+                {(addWorkoutMutation.isPending || updateWorkoutMutation.isPending) 
+                  ? "Salvando..." 
+                  : editingWorkout ? "Atualizar Treino" : "Salvar Treino"
+                }
               </Button>
             </DialogFooter>
           </form>

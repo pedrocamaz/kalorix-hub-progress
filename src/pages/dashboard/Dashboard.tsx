@@ -261,7 +261,16 @@ const Dashboard = () => {
               <div className="space-y-2">
                 {workoutsQuery.data!.map((w) => (
                   <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
-                    <span className="font-medium">{w.name}</span>
+                    <div>
+                      <span className="font-medium">{w.name}</span>
+                      <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                        w.intensity === "baixa" ? "bg-green-100 text-green-800" :
+                        w.intensity === "moderada" ? "bg-yellow-100 text-yellow-800" :
+                        "bg-red-100 text-red-800"
+                      }`}>
+                        {w.intensity}
+                      </span>
+                    </div>
                     <span className="text-sm text-muted-foreground">
                       {w.duration_minutes} min • {w.calories_burned} kcal
                     </span>
