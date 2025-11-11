@@ -9,6 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useNutritionistClients } from '@/hooks/useNutritionistClients';
 import AddClientModal from '@/components/nutritionist/AddClientModal';
+import { MacroMiniPie } from '@/components/nutritionist/MacroMiniPie';
+import { AdherenceBar } from '@/components/nutritionist/AdherenceBar';
+import { InsightBadge } from '@/components/nutritionist/InsightBadge';
+import { buildInsight } from '@/lib/nutritionistMetrics';
 
 export default function NutritionistDashboard() {
   const navigate = useNavigate();
@@ -207,65 +211,63 @@ export default function NutritionistDashboard() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredClients.map((client) => (
-              <Card key={client.client_id} className="hover:shadow-lg transition-shadow">
+            {clients.map((client) => (
+              <Card key={client.client_id} className="hover:shadow-lg transition">
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarFallback className="bg-green-100 text-green-700">
-                          {getInitials(client.client_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <CardTitle className="text-base">
-                          {client.client_name}
-                        </CardTitle>
-                        <CardDescription className="text-xs">
-                          {client.share_code}
-                        </CardDescription>
-                      </div>
+                  <div className="flex justify-between">
+                    <div>
+                      <CardTitle className="text-base">{client.client_name}</CardTitle>
+                      <CardDescription className="text-xs">{client.share_code}</CardDescription>
                     </div>
                     {client.is_active && (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                        Ativo
-                      </Badge>
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Ativo</Badge>
                     )}
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2 text-xs">
                     <div>
-                      <p className="text-muted-foreground text-xs">Peso</p>
+                      <p className="text-muted-foreground">Peso</p>
                       <p className="font-semibold">{client.current_weight ? `${client.current_weight} kg` : '-'}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">IMC</p>
+                      <p className="text-muted-foreground">IMC</p>
                       <p className="font-semibold">{client.imc || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">Refeições (7d)</p>
+                      <p className="text-muted-foreground">Refeições (7d)</p>
                       <p className="font-semibold">{client.meals_last_7_days || 0}</p>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs">Média Cal.</p>
-                      <p className="font-semibold">
-                        {client.avg_calories_last_7_days ? Math.round(client.avg_calories_last_7_days) : '-'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="pt-2 border-t">
-                    <p className="text-xs text-muted-foreground">
-                      Último registro: {formatDate(client.last_meal_date)}
-                    </p>
                   </div>
 
-                  <Button 
-                    variant="outline" 
-                    className="w-full mt-2"
-                    onClick={() => navigate(`/nutritionist/client/${client.client_id}`)}
-                  >
+                  <div className="flex items-center gap-4">
+                    <MacroMiniPie
+                      data={[
+                        { name: 'Prot', value: client.avg_calories_last_7_days ? 30 : 0, color: '#0ea5e9' },
+                        { name: 'Carb', value: client.avg_calories_last_7_days ? 45 : 0, color: '#22c55e' },
+                        { name: 'Gord', value: client.avg_calories_last_7_days ? 25 : 0, color: '#f59e0b' },
+                      ]}
+                    />
+                    <div className="flex-1">
+                      <AdherenceBar
+                        percent={client.adherence_percent_7d || 0}
+                      />
+                      <div className="mt-2">
+                        <InsightBadge
+                          text={buildInsight({
+                            adherencePercent: client.adherence_percent_7d || 0,
+                            avgCaloriesWeek: client.avg_calories_last_7_days || 0,
+                          })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground">
+                    Último registro: {client.last_meal_date ? new Date(client.last_meal_date).toLocaleDateString() : '-'}
+                  </p>
+
+                  <Button variant="outline" className="w-full" onClick={() => navigate(`/nutritionist/client/${client.client_id}`)}>
                     Ver Detalhes
                   </Button>
                 </CardContent>

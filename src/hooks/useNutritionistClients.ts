@@ -1,6 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+// Adicione (se ainda não tiver) os tipos auxiliares
+type SupabaseUserRow = {
+  id: string;
+  nome: string | null;
+  telefone: string | null;
+  email: string | null;
+  share_code: string | null;
+  peso: number | null;
+  altura: number | null;
+  imc: number | null;
+  idade: number | null;
+  sexo: string | null;
+  objetivo: string | null;
+};
+
+type RelationshipRow = {
+  id: string;
+  client_id: string;
+  added_at: string;
+  notes: string | null;
+  tags: string[] | null;
+  is_active: boolean;
+  last_viewed_at: string | null;
+  users: SupabaseUserRow | SupabaseUserRow[];
+};
 
 interface SupabaseUser {
   id: string;
@@ -47,6 +72,9 @@ export interface ClientDetail {
   last_meal_date: string;
   meals_last_7_days: number;
   avg_calories_last_7_days: number;
+  // NOVOS CAMPOS
+  days_with_meals_7d: number;
+  adherence_percent_7d: number;
 }
 
 export interface DashboardSummary {
@@ -73,12 +101,8 @@ export function useNutritionistClients() {
   const fetchClients = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
+      if (!user) throw new Error('Usuário não autenticado');
 
-      // 1. Primeiro, busca o ID do nutricionista logado
       const { data: nutritionistData, error: nutritionistError } = await supabase
         .from('nutritionists')
         .select('id, full_name')
@@ -91,7 +115,6 @@ export function useNutritionistClients() {
         return;
       }
 
-      // 2. Busca APENAS clientes vinculados a este nutricionista
       const { data: relationshipsData, error: relationshipsError } = await supabase
         .from('nutritionist_clients')
         .select(`
@@ -119,24 +142,13 @@ export function useNutritionistClients() {
         .eq('nutritionist_id', nutritionistData.id)
         .eq('is_active', true);
 
-      if (relationshipsError) {
-        throw relationshipsError;
-      }
+      if (relationshipsError) throw relationshipsError;
 
-      // 3. Para cada cliente, busca métricas alimentares dos últimos 7 dias
-      const clientsWithMetrics = await Promise.all(
-        (relationshipsData || []).map(async (relationship) => {
-          // Fix: Access the first (and only) user object from the array
-          const client = Array.isArray(relationship.users) 
-            ? relationship.users[0] 
-            : relationship.users;
-          
-          if (!client) {
-            console.warn('Client data not found for relationship:', relationship.id);
-            return null;
-          }
-          
-          // Busca registros alimentares dos últimos 7 dias deste cliente
+      const clientDetails = await Promise.all(
+        relationshipsData.map(async (relationship) => {
+          const client = Array.isArray(relationship.users) ? relationship.users[0] : relationship.users;
+          if (!client) return null;
+
           const { data: mealsData } = await supabase
             .from('registros_alimentares')
             .select('calorias, data_consumo')
@@ -144,19 +156,26 @@ export function useNutritionistClients() {
             .gte('data_consumo', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
             .order('data_consumo', { ascending: false });
 
-          // Última refeição
           const { data: lastMeal } = await supabase
             .from('registros_alimentares')
             .select('data_consumo')
             .eq('usuario_id', client.id)
             .order('data_consumo', { ascending: false })
             .limit(1)
-            .maybeSingle(); // Use maybeSingle() instead of single() to avoid errors when no data
+            .maybeSingle();
 
-          // Calcula métricas
-          const totalMeals = mealsData?.length || 0;
-          const avgCalories = totalMeals > 0 
-            ? (mealsData?.reduce((sum, meal) => sum + (meal.calorias || 0), 0) || 0) / totalMeals
+          const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+          const { data: mealsWeek } = await supabase
+            .from('registros_alimentares')
+            .select('data_consumo, calorias')
+            .eq('usuario_id', relationship.client_id)
+            .gte('data_consumo', startDate);
+
+          const totalMeals = (mealsWeek || []).length;
+          const uniqueDays7d = new Set((mealsWeek || []).map(m => m.data_consumo)).size;
+          const adherencePercent7d = Math.round((Math.min(uniqueDays7d, 7) / 7) * 100);
+          const avgCalories = totalMeals
+            ? (mealsWeek || []).reduce((s, m) => s + Number(m.calorias || 0), 0) / totalMeals
             : 0;
 
           return {
@@ -178,15 +197,15 @@ export function useNutritionistClients() {
             last_viewed_at: relationship.last_viewed_at || '',
             last_meal_date: lastMeal?.data_consumo || '',
             meals_last_7_days: totalMeals,
-            avg_calories_last_7_days: Math.round(avgCalories),
-          } as ClientDetail;
+            avg_calories_last_7_days: avgCalories,
+            // novos retornos usados no dashboard
+            days_with_meals_7d: uniqueDays7d,
+            adherence_percent_7d: adherencePercent7d,
+          };
         })
       );
 
-      // Filter out null values (clients without proper data)
-      const validClients = clientsWithMetrics.filter(client => client !== null) as ClientDetail[];
-      setClients(validClients);
-
+      setClients((clientDetails || []).filter(Boolean) as any[]);
     } catch (error: any) {
       console.error('Error fetching clients:', error);
       toast.error('Erro ao carregar lista de clientes');

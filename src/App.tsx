@@ -19,7 +19,6 @@ import ClientDetail from "./pages/nutritionist/ClientDetail";
 
 import WorkoutLogPage from "./pages/dashboard/WorkoutLogPage";
 
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -34,7 +33,12 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />

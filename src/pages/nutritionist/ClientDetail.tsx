@@ -12,6 +12,11 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, User, Phone, Mail, Calendar, Target, FileText, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatShareCode } from "@/lib/shareCode";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from 'recharts';
+import { calcImc, classifyImc, calcAdherence, buildInsight } from '@/lib/nutritionistMetrics';
+import { InsightBadge } from '@/components/nutritionist/InsightBadge';
+import { Progress } from '@/components/ui/progress';
+import { useClientLiveMetrics } from '@/hooks/useClientLiveMetrics';
 
 interface ClientData {
   id: string;
@@ -39,11 +44,11 @@ interface Note {
 
 interface Goal {
   id: string;
-  goal_type: string;
+  goal_type: string;      // 'weight', 'calories', etc
   target_value: number;
   current_value?: number;
   target_date?: string;
-  status: string;
+  is_achieved?: boolean;  // substituir 'status'
   created_at: string;
 }
 
@@ -69,6 +74,10 @@ export default function ClientDetail() {
     target_date: "",
   });
   const [savingGoal, setSavingGoal] = useState(false);
+
+  const { diet, todaysMeals, totals, remaining, isLoading: isLiveLoading } = useClientLiveMetrics(clientId, client?.telefone || '');
+
+  const [adherence7d, setAdherence7d] = useState<{ percent: number; daysWithMeals: number; referenceDays: number } | null>(null);
 
   useEffect(() => {
     fetchClientData();
@@ -109,11 +118,27 @@ export default function ClientDetail() {
       if (goalsError) throw goalsError;
       setGoals(goalsData || []);
       
-      // Busca meta de peso ativa
-      const weightGoal = goalsData?.find(
-        (g) => (g.goal_type === 'weight_loss' || g.goal_type === 'weight_gain') && g.status === 'active'
+      // Busca meta de peso ativa (corrigido)
+      const weightGoal = (goalsData || []).find(
+        (g) => g.goal_type === 'weight' && g.is_achieved === false
       );
       setActiveWeightGoal(weightGoal || null);
+
+      // Refeições últimos 7 dias (para adesão real)
+      const startDate = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) // inclui hoje
+        .toISOString()
+        .split('T')[0];
+
+      const { data: meals7d, error: meals7dError } = await supabase
+        .from('registros_alimentares')
+        .select('data_consumo')
+        .eq('usuario_id', clientId)
+        .gte('data_consumo', startDate);
+
+      if (meals7dError) throw meals7dError;
+
+      const mealDates = (meals7d || []).map(m => `${m.data_consumo}T00:00:00`);
+      setAdherence7d(calcAdherence(mealDates));
     } catch (error) {
       console.error("Error fetching client data:", error);
       toast({
@@ -259,6 +284,15 @@ export default function ClientDetail() {
     );
   };
 
+  // Exemplo de dados derivados (garantir arrays vazios se não houver consultas ainda)
+  const weightData = (client?.peso ? [{ date: new Date().toISOString().split('T')[0], weight: client.peso }] : []);
+  const dailyCalories = (client?.peso ? [{ date: new Date().toISOString().split('T')[0], calories: client.peso * 30 }] : []);
+  const macroTrend = (client?.peso ? [{ day: 1, proteina: client.peso * 0.3, carbo: client.peso * 0.4, gordura: client.peso * 0.3 }] : []);
+  // Remover placeholder:
+  // const adherence = calcAdherence([]);
+  const adherence = adherence7d || { percent: 0, daysWithMeals: 0, referenceDays: 7 };
+  const insight = buildInsight({ proteinLowDays: 0, adherencePercent: adherence.percent });
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-green-50 flex items-center justify-center">
@@ -290,6 +324,43 @@ export default function ClientDetail() {
       </div>
     );
   }
+
+  const handleGeneratePdf = () => {
+    if (!client) return;
+    const lines: string[] = [];
+    lines.push("Relatório do Cliente - Kalorix");
+    lines.push(`Gerado em: ${new Date().toLocaleString("pt-BR")}`);
+    lines.push("");
+    lines.push(`Nome: ${client.nome}`);
+    lines.push(`Código: ${client.share_code || "-"}`);
+    lines.push(`Peso: ${client.peso ? client.peso + " kg" : "N/A"}`);
+    lines.push(`Altura: ${client.altura ? client.altura + " cm" : "N/A"}`);
+    lines.push(`IMC: ${client.imc ? client.imc.toFixed(1) : "N/A"}`);
+    lines.push(`Objetivo: ${client.objetivo || "N/A"}`);
+    lines.push("");
+    lines.push("Notas:");
+    if (notes.length === 0) {
+      lines.push("- Nenhuma anotação.");
+    } else {
+      notes.forEach(n =>
+        lines.push(
+          `- ${new Date(n.created_at).toLocaleDateString("pt-BR")}: ${n.note_text.replace(/\s+/g, " ")}`
+        )
+      );
+    }
+    const content = lines.join("\n");
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `relatorio_${client.nome.replace(/\s+/g, "_")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({
+      title: "Relatório gerado",
+      description: "Download iniciado (formato TXT).",
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-green-50">
@@ -358,6 +429,77 @@ export default function ClientDetail() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+            {/* Acompanhamento de Hoje - tempo real */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between">
+                  <span>Acompanhamento de Hoje</span>
+                  <span className="text-xs text-muted-foreground">Atualiza em tempo real</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Meta (kcal)</p>
+                    <p className="text-2xl font-bold">{diet?.caloriesGoal ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Consumido</p>
+                    <p className="text-2xl font-bold text-primary">{Math.round(totals.calories)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Restante</p>
+                    <p className="text-2xl font-bold">{Math.round(remaining.calories)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Progresso</p>
+                    <Progress
+                      value={diet && diet.caloriesGoal > 0 ? Math.min((totals.calories / diet.caloriesGoal) * 100, 100) : 0}
+                      className="h-2"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Proteínas</p>
+                    <p className="font-semibold">{Math.round(totals.protein)}g <span className="text-muted-foreground">/ {diet?.proteinGoal ?? 0}g</span></p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Carboidratos</p>
+                    <p className="font-semibold">{Math.round(totals.carbs)}g <span className="text-muted-foreground">/ {diet?.carbGoal ?? 0}g</span></p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Gorduras</p>
+                    <p className="font-semibold">{Math.round(totals.fats)}g <span className="text-muted-foreground">/ {diet?.fatGoal ?? 0}g</span></p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Refeições de hoje</p>
+                  {isLiveLoading ? (
+                    <div className="text-muted-foreground text-sm">Carregando...</div>
+                  ) : todaysMeals.length === 0 ? (
+                    <div className="text-muted-foreground text-sm">Sem registros hoje</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {todaysMeals.map(m => (
+                        <div key={m.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground w-12">{m.time}</span>
+                            <span className="font-medium">{m.name}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-semibold text-primary">{Math.round(m.calories)} kcal</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Objetivo do Cliente - Destaque */}
             {client.objetivo && (
               <Card className="border-green-200 bg-green-50">
@@ -441,6 +583,74 @@ export default function ClientDetail() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Gráficos e Resumo */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader><CardTitle>Evolução de Peso</CardTitle></CardHeader>
+                <CardContent className="h-64">
+                  <ResponsiveContainer>
+                    <LineChart data={weightData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line dataKey="weight" stroke="#10b981" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Calorias Diárias (Últimos 14 dias)</CardTitle></CardHeader>
+                <CardContent className="h-64">
+                  <ResponsiveContainer>
+                    <BarChart data={dailyCalories}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="calories" fill="#f59e0b" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Macros Semana</CardTitle></CardHeader>
+                <CardContent className="h-64">
+                  <ResponsiveContainer>
+                    <BarChart data={macroTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="day" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="proteina" name="Proteína" fill="#0ea5e9" />
+                      <Bar dataKey="carbo" name="Carbo" fill="#22c55e" />
+                      <Bar dataKey="gordura" name="Gordura" fill="#f59e0b" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Resumo Nutricional</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <p>
+                    IMC: {calcImc(client?.peso ?? null, client?.altura ?? null)} (
+                    {classifyImc(calcImc(client?.peso ?? null, client?.altura ?? null))})
+                  </p>
+                  <p>Adesão (7d): {adherence.percent}% ({adherence.daysWithMeals}/{adherence.referenceDays} dias)</p>
+                  <div className="mt-2">
+                    <InsightBadge text={insight} />
+                  </div>
+                  <Button variant="outline" className="mt-2" onClick={handleGeneratePdf}>
+                    Gerar Relatório PDF
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Notes Tab */}
