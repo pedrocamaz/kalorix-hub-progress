@@ -1,6 +1,12 @@
 import { supabase } from "@/lib/supabaseClient";
 import { normalizePhone } from "@/lib/phone";
 
+// URL pública da aplicação (produção) com fallback seguro
+const PUBLIC_SITE_URL =
+  import.meta.env.VITE_PUBLIC_SITE_URL ||
+  import.meta.env.VITE_APP_BASE_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'https://kalorix-hub-progress.vercel.app');
+
 export async function createMagicLink(phone: string): Promise<string> {
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -16,8 +22,7 @@ export async function createMagicLink(phone: string): Promise<string> {
     throw error;
   }
 
-  const origin = (typeof window !== 'undefined' && window.location?.origin) || import.meta.env.VITE_APP_BASE_URL || 'http://localhost:8080';
-  return `${origin}/auth/callback?token=${encodeURIComponent(token)}`;
+  return `${PUBLIC_SITE_URL}/auth/callback?token=${encodeURIComponent(token)}`;
 }
 
 export async function verifyMagicLinkToken(token: string): Promise<{ phone: string } | null> {
@@ -99,16 +104,20 @@ export interface NutritionistProfile {
  * Cria usuário no Supabase Auth - o perfil é criado via RPC no frontend
  */
 export async function signUpNutritionist(data: NutritionistSignupData) {
-  const { email, password, fullName } = data;
+  const { email, password, fullName, crn, phone, specialization } = data;
 
-  // Criar usuário no Supabase Auth
+  // Criar usuário no Supabase Auth com redirect correto
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      emailRedirectTo: `${PUBLIC_SITE_URL}/nutritionist/login`,
       data: {
         user_type: 'nutritionist',
         full_name: fullName,
+        crn: crn || null,
+        phone: phone || null,
+        specialization: specialization || null,
       }
     }
   });

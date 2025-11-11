@@ -9,6 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
+// URL pública para redirecionar confirmação de email
+const PUBLIC_SITE_URL =
+  import.meta.env.VITE_PUBLIC_SITE_URL ||
+  import.meta.env.VITE_APP_BASE_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'https://kalorix-hub-progress.vercel.app');
+
 export default function NutritionistSignup() {
   const [formData, setFormData] = useState({
     fullName: '',
@@ -63,6 +69,7 @@ export default function NutritionistSignup() {
         email: formData.email.trim(),
         password: formData.password,
         options: {
+          emailRedirectTo: `${PUBLIC_SITE_URL}/auth/callback`,
           data: {
             user_type: 'nutritionist',
             full_name: formData.fullName.trim(),
