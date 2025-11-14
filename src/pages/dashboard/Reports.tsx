@@ -7,14 +7,12 @@ import { useState } from "react";
 
 const Reports = () => {
   const userPhone = localStorage.getItem('sessionPhone') || '';
-  // State for calendar navigation
   const [currentDate, setCurrentDate] = useState(new Date());
   const currentYear = currentDate.getFullYear();
-  const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
+  const currentMonth = currentDate.getMonth() + 1;
   
   const { chartData, calendarData, isLoading, isError } = useReports(userPhone, currentYear, currentMonth);
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -26,7 +24,6 @@ const Reports = () => {
     );
   }
 
-  // Error state
   if (isError) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -71,8 +68,9 @@ const Reports = () => {
     });
   };
 
+  // 🔥 CORREÇÃO: Extrai dia diretamente da string YYYY-MM-DD
   const getDayNumber = (dateString: string) => {
-    return new Date(dateString).getDate();
+    return parseInt(dateString.split('-')[2], 10);
   };
 
   const getWeekdays = () => {
@@ -80,15 +78,14 @@ const Reports = () => {
   };
 
   const getCalendarGrid = () => {
-    const firstDay = new Date(currentYear, currentMonth - 1, 1);
-    const lastDay = new Date(currentYear, currentMonth, 0);
-    const startOfWeek = firstDay.getDay(); // 0 = Sunday
-    const daysInMonth = lastDay.getDate();
+    // 🔥 CORREÇÃO: Calcula primeiro dia do mês SEM conversão de timezone
+    const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1);
+    const startOfWeek = firstDayOfMonth.getDay(); // 0 = Domingo
     
-    // Create array with empty slots for days before month start
+    // Slots vazios antes do primeiro dia
     const grid = Array(startOfWeek).fill(null);
     
-    // Add actual days data
+    // Adiciona os dias do mês
     calendarData.forEach(dayData => {
       grid.push(dayData);
     });

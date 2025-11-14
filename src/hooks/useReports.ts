@@ -15,21 +15,25 @@ interface DayData {
   hasData: boolean
 }
 
+// 🔥 HELPER: Cria data string sem conversão de timezone
+function makeDateString(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 export const useReports = (userPhone: string, year: number, month: number) => {
   const phone = normalizePhone(userPhone)
-  // Trend (last 6 months)
+
+  // Chart data - Last 6 months
   const { 
     data: chartData, 
     isLoading: isChartLoading, 
     isError: isChartError 
   } = useQuery({
-    queryKey: ['reportsChart', phone, year, month],
+    queryKey: ['reportsChart', phone],
     queryFn: async (): Promise<CalorieRecord[]> => {
-      console.log('Fetching reports data for phone:', phone)
-      
-      // Get data for the last 6 months for trend chart
-      const endDate = new Date(year, month, 0) // Last day of selected month
-      const startDate = new Date(year, month - 6, 1) // 6 months before
+      const endDate = new Date()
+      const startDate = new Date()
+      startDate.setMonth(startDate.getMonth() - 6)
 
       const { data: mealsData, error: mealsError } = await supabase
         .from('registros_alimentares')
@@ -55,9 +59,8 @@ export const useReports = (userPhone: string, year: number, month: number) => {
 
       // Create chart data for the last 6 months
       const chartData: CalorieRecord[] = []
-      const baseWeight = 80 // From your user data
-      
-      const monthsToShow = 6 * 30 // Approximate days in 6 months
+      const baseWeight = 80
+      const monthsToShow = 6 * 30
       for (let i = 0; i < monthsToShow; i++) {
         const date = new Date(startDate)
         date.setDate(date.getDate() + i)
@@ -66,7 +69,6 @@ export const useReports = (userPhone: string, year: number, month: number) => {
         
         const dateStr = date.toISOString().split('T')[0]
         
-        // Simulate weight progression
         const weight = baseWeight - (i * 0.01) + (Math.random() * 0.3 - 0.15)
         
         chartData.push({
@@ -81,7 +83,7 @@ export const useReports = (userPhone: string, year: number, month: number) => {
     enabled: !!phone,
   })
 
-  // Calendar month
+  // Calendar month - 🔥 USA RPC COM TIMEZONE BRT + CORREÇÃO NO FRONTEND
   const { 
     data: calendarData, 
     isLoading: isCalendarLoading, 
@@ -89,61 +91,59 @@ export const useReports = (userPhone: string, year: number, month: number) => {
   } = useQuery({
     queryKey: ['reportsCalendar', phone, year, month],
     queryFn: async (): Promise<DayData[]> => {
-      // Get first and last day of the month
-      const firstDay = new Date(year, month - 1, 1)
-      const lastDay = new Date(year, month, 0)
+      console.log('🔄 Fetching calendar data (BRT) for:', { phone, year, month });
+
+      // RPC com timezone BRT
+      const { data: monthlyData, error } = await supabase.rpc('get_monthly_calories_brt', {
+        p_telefone: phone,
+        p_year: year,
+        p_month: month
+      });
+
+      if (error) {
+        console.error('❌ Error calling get_monthly_calories_brt:', error);
+        throw error;
+      }
+
+      console.log('✅ Monthly calories (BRT):', monthlyData);
 
       // Get daily calorie goal
       const { data: dietData } = await supabase
         .from('dietas')
         .select('calorias_diarias')
         .eq('usuario_telefone', phone)
-        .single()
+        .maybeSingle();
 
-      const dailyGoal = parseFloat(dietData?.calorias_diarias || '2700')
+      const dailyGoal = parseFloat(dietData?.calorias_diarias || '2700');
 
-      const { data: mealsData, error } = await supabase
-        .from('registros_alimentares')
-        .select('data_consumo, calorias')
-        .eq('usuario_telefone', phone)
-        .gte('data_consumo', firstDay.toISOString().split('T')[0])
-        .lte('data_consumo', lastDay.toISOString().split('T')[0])
+      // Converte resultado da RPC em objeto { date: calories }
+      const caloriesByDate = (monthlyData || []).reduce((acc, row) => {
+        acc[row.data_consumo] = Number(row.total_calorias || 0);
+        return acc;
+      }, {} as Record<string, number>);
 
-      if (error) {
-        console.error('Error fetching calendar data:', error)
-        throw error
-      }
-
-      // Group by date and calculate balance
-      const consumptionByDate = (mealsData || []).reduce((acc, meal) => {
-        const date = meal.data_consumo
-        if (!acc[date]) {
-          acc[date] = 0
-        }
-        acc[date] += parseFloat(meal.calorias) || 0
-        return acc
-      }, {} as Record<string, number>)
-
-      // Create calendar data for each day of the month
-      const calendarData: DayData[] = []
-      const daysInMonth = lastDay.getDate()
+      // 🔥 CORREÇÃO: Cria datas sem conversão de timezone
+      const calendarData: DayData[] = [];
+      const daysInMonth = new Date(year, month, 0).getDate(); // Último dia do mês
       
       for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day)
-        const dateStr = date.toISOString().split('T')[0]
+        // 🔥 USA HELPER PARA EVITAR CONVERSÃO DE TIMEZONE
+        const dateStr = makeDateString(year, month, day);
         
-        const consumed = consumptionByDate[dateStr] || 0
-        const balance = consumed - dailyGoal
+        const consumed = caloriesByDate[dateStr] || 0;
+        const balance = consumed - dailyGoal;
         
         calendarData.push({
           date: dateStr,
           calories: consumed,
           balance: Math.round(balance),
           hasData: consumed > 0
-        })
+        });
       }
 
-      return calendarData
+      console.log('📅 Calendar data generated (fixed timezone):', calendarData.slice(0, 5));
+
+      return calendarData;
     },
     enabled: !!phone,
   })
