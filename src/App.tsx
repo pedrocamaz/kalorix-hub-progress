@@ -16,8 +16,8 @@ import NutritionistLogin from "./pages/nutritionist/NutritionistLogin";
 import NutritionistSignup from "./pages/nutritionist/NutritionistSignup";
 import NutritionistDashboard from "./pages/nutritionist/NutritionistDashboard";
 import ClientDetail from "./pages/nutritionist/ClientDetail";
-
 import WorkoutLogPage from "./pages/dashboard/WorkoutLogPage";
+import TestTimezone from "./pages/dashboard/TestTimezone"; // ✨ NOVO IMPORT
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +48,8 @@ const App = () => (
             <Route path="meals" element={<MealDiary />} />
             <Route path="workouts" element={<WorkoutLogPage />} />
             <Route path="profile" element={<Profile />} />
+            {/* ✨ NOVA ROTA DE TESTE */}
+            <Route path="test-timezone" element={<TestTimezone />} />
           </Route>
           <Route path="/auth/callback" element={<AuthCallback />} />
           

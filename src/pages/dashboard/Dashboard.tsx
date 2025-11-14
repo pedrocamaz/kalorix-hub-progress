@@ -14,8 +14,11 @@ const Dashboard = () => {
     consumedTotals, 
     isLoading, 
     isError,
-    exerciseCalories
-  } = useDashboardData(userPhone);
+    exerciseCalories,
+    caloriesGoal,
+    caloriesConsumed,
+    adjustedRemaining
+  } = useDashboardData();
 
   const { profile } = useProfile(userPhone);
   const today = new Date().toISOString().split('T')[0];
@@ -33,7 +36,7 @@ const Dashboard = () => {
     );
   }
 
-  // Error state (apenas quando a query realmente falha)
+  // Error state
   if (isError) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -47,12 +50,9 @@ const Dashboard = () => {
     );
   }
 
-  // Calculate values from real data - converting strings to numbers
-  const caloriesConsumed = consumedTotals.calorias;
-  const caloriesGoal = dietData ? parseFloat(dietData.calorias_diarias) : 0;
-  const caloriesRemaining = caloriesGoal - caloriesConsumed;
+  // 🔥 NOVO: Proteção contra dietData null
   const progressPercent = caloriesGoal > 0 ? (caloriesConsumed / caloriesGoal) * 100 : 0;
-  const saldoAtualizado = -parseInt(dietData.saldo_hoje);
+  const saldoAtualizado = adjustedRemaining; // Já vem calculado do hook
 
   const macros = [
     { 
@@ -125,7 +125,7 @@ const Dashboard = () => {
                 (Inclui {exerciseCalories || 0} kcal de exercícios hoje)
               </p>
               <p className="text-sm text-muted-foreground">
-                TMB: {dietData ? dietData.gasto_basal : 0} kcal • NEAT: {dietData ? dietData.neat : 0} kcal
+                TMB: {dietData?.gasto_basal || 0} kcal • NEAT: {dietData?.neat || 0} kcal
               </p>
             </div>
 
@@ -133,7 +133,7 @@ const Dashboard = () => {
               <div className="flex justify-between text-sm">
                 <span>Consumido: {caloriesConsumed} kcal</span>
                 <span className="font-semibold">
-                  Restante: {saldoAtualizado > 0 ? saldoAtualizado : 0} kcal
+                  Restante: {Math.max(saldoAtualizado, 0)} kcal
                 </span>
               </div>
               <Progress value={Math.min(progressPercent, 100)} className="h-3" />
@@ -249,34 +249,25 @@ const Dashboard = () => {
           ) : workoutsQuery.isError ? (
             <div className="text-destructive">Erro ao carregar treinos</div>
           ) : (workoutsQuery.data?.length ?? 0) === 0 ? (
-            <div className="text-muted-foreground">Nenhum treino registrado hoje</div>
+            <div className="text-center py-8 text-muted-foreground">
+              <Dumbbell className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Nenhum treino registrado hoje</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-                <span className="font-medium">Calorias queimadas</span>
-                <span className="font-semibold text-primary">
-                  {workoutsQuery.data!.reduce((s, w) => s + (w.calories_burned || 0), 0)} kcal
-                </span>
-              </div>
-              <div className="space-y-2">
-                {workoutsQuery.data!.map((w) => (
-                  <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
-                    <div>
-                      <span className="font-medium">{w.name}</span>
-                      <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-                        w.intensity === "baixa" ? "bg-green-100 text-green-800" :
-                        w.intensity === "moderada" ? "bg-yellow-100 text-yellow-800" :
-                        "bg-red-100 text-red-800"
-                      }`}>
-                        {w.intensity}
-                      </span>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {w.duration_minutes} min • {w.calories_burned} kcal
-                    </span>
+              {workoutsQuery.data?.map((workout: any) => (
+                <div key={workout.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
+                  <div>
+                    <p className="font-medium">{workout.activity_type}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {workout.duration_minutes} min • Intensidade: {workout.intensity}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-primary">{workout.calories_burned} kcal</p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

@@ -1,141 +1,151 @@
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabaseClient'
-import { normalizePhone } from '@/lib/phone'
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import { normalizePhone } from '@/lib/phone';
 
-interface DietData {
-  calorias_diarias: string
-  proteina_gramas: string
-  carboidrato_gramas: string
-  gordura_gramas: string
-  gasto_basal: number
-  neat: number
-  saldo_hoje: string
-  meta_alvo: number
+/**
+ * Interface que corresponde ao retorno da RPC get_dashboard_data_today_brt
+ */
+interface DashboardData {
+  // Dados das refeições de hoje
+  refeicoes_hoje: Array<{
+    id: number;
+    nome_alimento: string;
+    calorias: number;
+    proteinas: number;
+    carboidratos: number;
+    gorduras: number;
+    hora_consumo: string;
+    tipo_refeicao: string;
+  }>;
+
+  // Metas diárias
+  meta_calorias: number;
+  meta_proteinas: number;
+  meta_carboidratos: number;
+  meta_gorduras: number;
+  
+  // Totais consumidos hoje
+  calorias_consumidas: number;
+  proteinas_consumidas: number;
+  carboidratos_consumidos: number;
+  gorduras_consumidas: number;
+  
+  // Dados da dieta
+  gasto_basal: number;  // ✅ Já era number (BIGINT = number no JS)
+  neat: number;         // ✅ Já era number
+  meta_alvo: number;    // ✅ Já era number
+  
+  // Calorias queimadas em exercícios hoje
+  calorias_exercicios: number;
 }
 
-interface MealRecord {
-  nome_alimento: string
-  calorias: string
-  proteinas: string
-  carboidratos: string
-  gorduras: string
-  hora_consumo: string
-  tipo_refeicao: string
-  data_consumo: string
-}
+/**
+ * Hook personalizado para buscar dados do dashboard usando a RPC do Supabase
+ * que corrige o problema de fuso horário (forçando America/Sao_Paulo)
+ */
+export const useDashboardData = () => {
+  // 🔥 FIX: Clientes usam telefone, não auth.uid()
+  const userPhone = localStorage.getItem('sessionPhone') || '';
+  const normalizedPhone = normalizePhone(userPhone);
 
-interface ConsumedTotals {
-  calorias: number
-  proteinas: number
-  carboidratos: number
-  gorduras: number
-}
-
-export const useDashboardData = (userPhone: string) => {
-  const phone = normalizePhone(userPhone)
-  // Fetch diet goals
-  const { 
-    data: dietData, 
-    isLoading: isDietLoading, 
-    isError: isDietError 
-  } = useQuery({
-    queryKey: ['dietData', phone],
-    queryFn: async (): Promise<DietData | null> => {
-      const { data, error } = await supabase
-        .from('dietas')
-        .select('calorias_diarias, proteina_gramas, carboidrato_gramas, gordura_gramas, gasto_basal, neat, saldo_hoje, meta_alvo')
-        .eq('usuario_telefone', phone)
-        .maybeSingle()
-      if (error) {
-        console.error('Error fetching diet data:', error)
-        throw error
-      }
-      return data
-    },
-    enabled: !!phone,
-  })
-
-  // Get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split('T')[0]
-
-  // Fetch today's meals
-  const { 
-    data: todaysMeals, 
-    isLoading: isMealsLoading, 
-    isError: isMealsError 
-  } = useQuery({
-    queryKey: ['todaysMeals', phone, today],
-    queryFn: async (): Promise<MealRecord[]> => {
-      const { data, error } = await supabase
-        .from('registros_alimentares')
-        .select('nome_alimento, calorias, proteinas, carboidratos, gorduras, hora_consumo, tipo_refeicao, data_consumo')
-        .eq('usuario_telefone', phone)
-        .eq('data_consumo', today)
-        .order('hora_consumo', { ascending: true })
-      if (error) {
-        console.error('Error fetching meals data:', error)
-        throw error
-      }
-      return data || []
-    },
-    enabled: !!phone,
-  })
-
-  // Calculate consumed totals
-  const consumedTotals: ConsumedTotals = {
-    calorias: 0,
-    proteinas: 0,
-    carboidratos: 0,
-    gorduras: 0
-  }
-
-  if (todaysMeals && todaysMeals.length > 0) {
-    todaysMeals.forEach(meal => {
-      consumedTotals.calorias += parseFloat(meal.calorias) || 0
-      consumedTotals.proteinas += parseFloat(meal.proteinas) || 0
-      consumedTotals.carboidratos += parseFloat(meal.carboidratos) || 0
-      consumedTotals.gorduras += parseFloat(meal.gorduras) || 0
-    })
-  }
-
-  // Fetch today's exercises (calorias queimadas)
+  /**
+   * Query que chama a RPC get_dashboard_data_today_brt
+   */
   const {
-    data: todaysExercises,
-    isLoading: isExercisesLoading,
-    isError: isExercisesError,
+    data: dashboardData,
+    isLoading,
+    isError,
+    error,
+    refetch
   } = useQuery({
-    queryKey: ['todaysExercises', phone, today],
-    queryFn: async (): Promise<{ calorias_queimadas: number; duracao_minutos: number; tipo_treino: string; }[]> => {
-      const { data, error } = await supabase
-        .from('registros_treino')
-        .select('calorias_queimadas, duracao_minutos, tipo_treino, data_treino')
-        .eq('usuario_telefone', phone)
-        .eq('data_treino', today)
-        .order('created_at', { ascending: true })
-      if (error) {
-        console.error('Error fetching exercises data:', error)
-        throw error
-      }
-      return (data || []) as any
-    },
-    enabled: !!phone,
-  })
+    queryKey: ['dashboardData', normalizedPhone],
+    queryFn: async (): Promise<DashboardData | null> => {
+      console.log('🔄 Fetching dashboard data via RPC (BRT timezone) for phone:', normalizedPhone);
+      
+      // 🔥 NOVO: Passa telefone como parâmetro
+      const { data, error } = await supabase.rpc('get_dashboard_data_today_brt', {
+        p_telefone: normalizedPhone
+      });
 
-  // Sum exercise calories
-  let exerciseCalories = 0
-  if (todaysExercises && todaysExercises.length > 0) {
-    todaysExercises.forEach(e => {
-      exerciseCalories += Number(e.calorias_queimadas) || 0
-    })
-  }
+      if (error) {
+        console.error('❌ Error calling RPC get_dashboard_data_today_brt:', error);
+        throw error;
+      }
+
+      // A RPC retorna um array. Pegamos o primeiro item ou null
+      const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      
+      console.log('✅ Dashboard data received:', result);
+      
+      return result;
+    },
+    enabled: !!normalizedPhone, // 🔥 FIX: Habilita apenas se tiver telefone
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+    retry: 2,
+  });
+
+  // Calcula valores derivados
+  const caloriesConsumed = dashboardData?.calorias_consumidas || 0;
+  const caloriesGoal = dashboardData?.meta_calorias || 0;
+  const caloriesRemaining = Math.max(0, caloriesGoal - caloriesConsumed);
+  const progressPercent = caloriesGoal > 0 ? (caloriesConsumed / caloriesGoal) * 100 : 0;
+
+  // Calorias ajustadas (meta + exercícios)
+  const exerciseCalories = dashboardData?.calorias_exercicios || 0;
+  const adjustedCaloriesGoal = caloriesGoal + exerciseCalories;
+  const adjustedRemaining = Math.max(0, adjustedCaloriesGoal - caloriesConsumed);
+
+  // Totais de macros consumidos
+  const consumedTotals = {
+    calorias: caloriesConsumed,
+    proteinas: dashboardData?.proteinas_consumidas || 0,
+    carboidratos: dashboardData?.carboidratos_consumidos || 0,
+    gorduras: dashboardData?.gorduras_consumidas || 0,
+  };
+
+  // Refeições de hoje
+  const todaysMeals = dashboardData?.refeicoes_hoje || [];
 
   return {
-    dietData,
-    todaysMeals: todaysMeals || [],
-    todaysExercises: todaysExercises || [],
-    consumedTotals,
+    // Dados brutos
+    dashboardData,
+    
+    // Status da query
+    isLoading,
+    isError,
+    error,
+    
+    // Valores calculados
+    caloriesConsumed,
+    caloriesGoal,
+    caloriesRemaining,
+    progressPercent,
+    
+    // Calorias ajustadas (com exercícios)
     exerciseCalories,
-    isLoading: isDietLoading || isMealsLoading || isExercisesLoading,
-    isError: isDietError || isMealsError || isExercisesError,
-  }
-}
+    adjustedCaloriesGoal,
+    adjustedRemaining,
+    
+    // Totais de macros
+    consumedTotals,
+    
+    // Refeições de hoje
+    todaysMeals,
+    
+    // Dados da dieta
+    dietData: dashboardData ? {
+      calorias_diarias: String(dashboardData.meta_calorias),
+      proteina_gramas: String(dashboardData.meta_proteinas),
+      carboidrato_gramas: String(dashboardData.meta_carboidratos),
+      gordura_gramas: String(dashboardData.meta_gorduras),
+      gasto_basal: dashboardData.gasto_basal,
+      neat: dashboardData.neat,
+      meta_alvo: dashboardData.meta_alvo,
+      saldo_hoje: String(adjustedRemaining),
+    } : null,
+    
+    // Função para forçar atualização
+    refetch,
+  };
+};
