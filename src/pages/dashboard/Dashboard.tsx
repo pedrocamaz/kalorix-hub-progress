@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Apple, Flame, Loader2, Dumbbell } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Apple, Flame, Loader2, Dumbbell, Scale } from "lucide-react";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useProfile } from "@/hooks/useProfile";
 import { useWorkoutLog } from "@/hooks/useWorkoutLog";
+import { Link } from "react-router-dom";
 
 const Dashboard = () => {
   const userPhone = localStorage.getItem('sessionPhone') || '';
@@ -50,9 +52,8 @@ const Dashboard = () => {
     );
   }
 
-  // 🔥 NOVO: Proteção contra dietData null
   const progressPercent = caloriesGoal > 0 ? (caloriesConsumed / caloriesGoal) * 100 : 0;
-  const saldoAtualizado = adjustedRemaining; // Já vem calculado do hook
+  const saldoAtualizado = adjustedRemaining;
 
   const macros = [
     { 
@@ -78,13 +79,11 @@ const Dashboard = () => {
     },
   ];
 
-  // Format time from HH:MM:SS to HH:MM
   const formatTime = (timeString: string) => {
     if (!timeString) return '';
     return timeString.substring(0, 5);
   };
 
-  // Map meal types to Portuguese
   const getMealTypeInPortuguese = (type: string) => {
     const typeMap: { [key: string]: string } = {
       'Café da manhã': 'Café da manhã',
@@ -96,13 +95,27 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-2 md:p-2">
+      {/* 🎯 BOTÃO GAMIFICADO - LARANJA KALORIX */}
+      <div className="flex justify-end">
+        <Button 
+          asChild
+          size="sm"
+          className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg hover:shadow-xl transition-all text-white"
+        >
+          <Link to="/dashboard/reports" className="flex items-center gap-2">
+            <Scale className="h-4 w-4" />
+            🔥 Registrar Peso
+          </Link>
+        </Button>
+      </div>
+
       <div>
         <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
         <p className="text-muted-foreground">Como você está hoje</p>
       </div>
 
-      {/* Calorie Overview Card */}
+      {/* Calorie Overview Card - DESIGN ORIGINAL */}
       <Card className="bg-secondary border-none">
         <CardContent className="pt-6">
           <div className="text-center space-y-4">
@@ -142,7 +155,7 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Macros Card */}
+      {/* Macros Card - DESIGN ORIGINAL */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -175,14 +188,13 @@ const Dashboard = () => {
                   <div>
                     <p className="font-medium">{macro.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {caloriesGoal > 0 ? Math.round((macro.goal / caloriesGoal) * 100) : 0}% das calorias
+                      {macro.consumed} de {macro.goal} {macro.unit}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold">{macro.consumed}{macro.unit}</p>
-                  <p className="text-xs text-muted-foreground">de {macro.goal}{macro.unit}</p>
-                </div>
+                <span className="text-lg font-bold">
+                  {macro.goal > 0 ? Math.round((macro.consumed / macro.goal) * 100) : 0}%
+                </span>
               </div>
               <Progress 
                 value={macro.goal > 0 ? Math.min((macro.consumed / macro.goal) * 100, 100) : 0} 
@@ -193,7 +205,7 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Today's Meals */}
+      {/* Refeições de Hoje - DESIGN ORIGINAL */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -235,7 +247,7 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Treinos de Hoje */}
+      {/* Treinos de Hoje - DESIGN ORIGINAL */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
