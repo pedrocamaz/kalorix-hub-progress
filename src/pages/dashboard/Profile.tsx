@@ -3,17 +3,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CreditCard, User, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useProfile } from "@/hooks/useProfile";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { CreditCard, User, Loader2, Flame, Target, Scale, TrendingUp, Zap, Activity } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useProfile, GOAL_CONFIGS, type GoalType } from "@/hooks/useProfile";
 import { toast } from "sonner";
 import { supabase, supabaseUrl } from "@/lib/supabaseClient";
-import type { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from '@supabase/supabase-js'
 
 const Profile = () => {
   const userPhone = localStorage.getItem('sessionPhone') || '';
   
-  const { profile, isLoading, isError, updateProfile, isUpdating } = useProfile(userPhone);
+  const { profile, isLoading, isError, updateProfile, isUpdating, simulateDiet } = useProfile(userPhone);
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -24,7 +25,7 @@ const Profile = () => {
     idade: "",
     sexo: "M",
     nivel_atividade: "3",
-    objetivo: "2",
+    objetivo: "maintenance" as GoalType,
   });
 
   const [portalLoading, setPortalLoading] = useState(false);
@@ -41,10 +42,29 @@ const Profile = () => {
         idade: profile.idade.toString(),
         sexo: profile.sexo,
         nivel_atividade: profile.nivel_atividade,
-        objetivo: profile.objetivo,
+        objetivo: profile.objetivo as GoalType,
       });
     }
   }, [profile]);
+
+  // Simulação de dieta em tempo real
+  const dietPreview = useMemo(() => {
+    const peso = parseFloat(formData.peso) || 0;
+    const altura = parseInt(formData.altura) || 0;
+    const idade = parseInt(formData.idade) || 0;
+
+    if (peso > 0 && altura > 0 && idade > 0) {
+      return simulateDiet(
+        peso,
+        altura,
+        idade,
+        formData.sexo,
+        parseInt(formData.nivel_atividade),
+        formData.objetivo
+      );
+    }
+    return null;
+  }, [formData, simulateDiet]);
 
   // Loading state
   if (isLoading) {
@@ -97,13 +117,11 @@ const Profile = () => {
       }
       const returnUrl = window.location.origin + "/dashboard/profile";
 
-      // 1) Tenta pelo invoke (recomendado)
       const { data, error } = await supabase.functions.invoke("billing-portal", {
         body: { phone: userPhone, return_url: returnUrl },
       });
 
       if (error) {
-        // 2) Fallback de debug: fetch direto para capturar status/body
         try {
           const r = await fetch(`${supabaseUrl}/functions/v1/billing-portal`, {
             method: "POST",
@@ -114,35 +132,51 @@ const Profile = () => {
             body: JSON.stringify({ phone: userPhone, return_url: returnUrl }),
           });
           const text = await r.text();
-          console.error("billing-portal direct fetch:", { status: r.status, body: text });
-          toast.error(`Erro ${r.status}: ${text || "Falha ao abrir o portal"}`);
-        } catch (e: any) {
-          console.error("billing-portal direct fetch failed:", e);
-          toast.error("Erro ao contactar a Edge Function");
+          console.error("Fetch direct response:", { status: r.status, text });
+          if (!r.ok) {
+            throw new Error(`Erro HTTP ${r.status}: ${text}`);
+          }
+          const parsed = JSON.parse(text);
+          if (parsed.url) {
+            window.location.href = parsed.url;
+            return;
+          }
+        } catch (fetchErr) {
+          console.error("Fetch direct error:", fetchErr);
         }
-        return;
+        throw error;
       }
 
-      if (!data?.url) {
-        console.error("billing-portal: resposta sem url", data);
-        toast.error("Portal não retornou URL");
-        return;
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error("Portal não retornou URL válida");
       }
-
-      window.location.href = data.url;
-    } catch (e: any) {
-      console.error("billing-portal exception:", e);
-      toast.error(e?.message || "Erro inesperado ao abrir o portal");
+    } catch (error: any) {
+      console.error("Error opening portal:", error);
+      toast.error(error.message || "Erro ao abrir portal de assinatura");
     } finally {
       setPortalLoading(false);
     }
   };
 
+  const getGoalIcon = (goal: GoalType) => {
+    const icons = {
+      lose_aggressive: Flame,
+      lose_moderate: Target,
+      maintenance: Scale,
+      gain_lean: TrendingUp,
+      gain_aggressive: Zap
+    };
+    const Icon = icons[goal] || Target;
+    return <Icon className="h-6 w-6" />;
+  };
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Meu Perfil</h1>
-        <p className="text-muted-foreground">Gerencie suas informações e metas</p>
+        <h1 className="text-3xl font-bold mb-2">Configuração do Perfil</h1>
+        <p className="text-muted-foreground">Personalize suas metas e dados</p>
       </div>
 
       {/* Personal Information */}
@@ -150,12 +184,12 @@ const Profile = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5 text-primary" />
-            Informações Pessoais
+            Dados Pessoais
           </CardTitle>
-          <CardDescription>Atualize seus dados básicos</CardDescription>
+          <CardDescription>Mantenha suas informações atualizadas</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="nome">Nome Completo</Label>
@@ -248,28 +282,141 @@ const Profile = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="objetivo">Objetivo</Label>
-              <Select value={formData.objetivo} onValueChange={(value) => setFormData({ ...formData, objetivo: value })}>
-                <SelectTrigger id="objetivo">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Emagrecer</SelectItem>
-                  <SelectItem value="2">Manter peso</SelectItem>
-                  <SelectItem value="3">Ganhar peso</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Gamified Goal Selection */}
+            <div className="space-y-4 pt-6 border-t">
+              <div className="space-y-2">
+                <Label className="text-lg font-semibold flex items-center gap-2">
+                  <Target className="h-5 w-5 text-primary" />
+                  Escolha Seu Objetivo
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Selecione uma estratégia para moldar sua jornada
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {(Object.keys(GOAL_CONFIGS) as GoalType[]).map((goal) => {
+                  const config = GOAL_CONFIGS[goal];
+                  const isSelected = formData.objetivo === goal;
+                  
+                  return (
+                    <button
+                      key={goal}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, objetivo: goal })}
+                      className={`
+                        relative p-4 rounded-lg border-2 transition-all duration-200
+                        hover:shadow-lg hover:scale-105 cursor-pointer
+                        ${isSelected 
+                          ? `${config.borderColor} ring-4 ring-offset-2 bg-secondary/50` 
+                          : 'border-border hover:border-primary/50'
+                        }
+                      `}
+                    >
+                      <div className="space-y-3">
+                        <div className={`${config.color} flex justify-center`}>
+                          {getGoalIcon(goal)}
+                        </div>
+                        <div className="text-center space-y-1">
+                          <h3 className="font-bold text-sm">{config.label}</h3>
+                          <p className="text-xs text-muted-foreground">
+                            {config.description}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <Badge className="absolute -top-2 -right-2 bg-primary">
+                            Ativo
+                          </Badge>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
+            {/* Diet Preview */}
+            {dietPreview && (
+              <Card className="bg-gradient-to-br from-primary/10 via-background to-secondary/20 border-primary/20">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-primary">
+                    <Activity className="h-5 w-5" />
+                    Previsão da Sua Dieta
+                  </CardTitle>
+                  <CardDescription>
+                    Valores calculados com base no objetivo selecionado
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Meta Calórica Principal */}
+                  <div className="text-center p-6 bg-background/80 rounded-lg border-2 border-primary/30">
+                    <p className="text-sm text-muted-foreground mb-2">Meta Calórica Diária</p>
+                    <p className="text-5xl font-bold text-primary">
+                      {dietPreview.metaAlvo}
+                      <span className="text-2xl ml-2">kcal</span>
+                    </p>
+                    <div className="mt-4 flex justify-center gap-4 text-xs text-muted-foreground">
+                      <span>TMB: {dietPreview.bmr} kcal</span>
+                      <span>•</span>
+                      <span>TDEE: {dietPreview.tdee} kcal</span>
+                    </div>
+                  </div>
+
+                  {/* Distribuição de Macros */}
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium text-center">Distribuição de Macronutrientes</p>
+                    
+                    {/* Proteína */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Proteína</span>
+                        <Badge variant="secondary">{dietPreview.proteina}g</Badge>
+                      </div>
+                      <Progress 
+                        value={33} 
+                        className="h-2 bg-blue-200 [&>div]:bg-blue-500"
+                      />
+                    </div>
+
+                    {/* Carboidrato */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Carboidratos</span>
+                        <Badge variant="secondary">{dietPreview.carboidrato}g</Badge>
+                      </div>
+                      <Progress 
+                        value={33} 
+                        className="h-2 bg-green-200 [&>div]:bg-green-500"
+                      />
+                    </div>
+
+                    {/* Gordura */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">Gorduras</span>
+                        <Badge variant="secondary">{dietPreview.gordura}g</Badge>
+                      </div>
+                      <Progress 
+                        value={33} 
+                        className="h-2 bg-orange-200 [&>div]:bg-orange-500"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-center text-muted-foreground">
+                    💡 Esses valores serão aplicados quando você salvar as alterações
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             <Button type="submit" className="w-full md:w-auto" disabled={isUpdating}>
-              {isUpdating ? "Salvando..." : "Salvar Alterações"}
+              {isUpdating ? "Salvando..." : "🚀 Salvar e Aplicar Nova Dieta"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      {/* Share Code - Compartilhar com Nutricionista */}
       {profile.share_code && (
         <Card className="border-green-200 bg-green-50/50 dark:bg-green-900/10">
           <CardHeader>
@@ -284,28 +431,19 @@ const Profile = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="shareCode" className="text-sm font-medium">
-                Seu Código de Compartilhamento
-              </Label>
+            <div className="flex items-center gap-3 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-300 dark:border-green-700">
+              <code className="flex-1 text-2xl font-mono font-bold text-green-700 dark:text-green-400 tracking-wider">
+                {profile.share_code}
+              </code>
               <div className="flex gap-2">
-                <Input
-                  id="shareCode"
-                  value={profile.share_code}
-                  readOnly
-                  className="font-mono text-center text-lg tracking-widest bg-white dark:bg-gray-800 border-2 border-green-300 dark:border-green-700"
-                />
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   className="border-green-300 hover:bg-green-100 dark:border-green-700 dark:hover:bg-green-900/20"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(profile.share_code!);
-                      toast.success('Código copiado!');
-                    } catch (error) {
-                      toast.error('Erro ao copiar código');
-                    }
+                  onClick={() => {
+                    navigator.clipboard.writeText(profile.share_code || '');
+                    toast.success('Código copiado!');
                   }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -316,6 +454,7 @@ const Profile = () => {
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     className="border-green-300 hover:bg-green-100 dark:border-green-700 dark:hover:bg-green-900/20"
                     onClick={async () => {
                       try {
@@ -324,7 +463,7 @@ const Profile = () => {
                           text: `Meu código de compartilhamento Kalorix é: ${profile.share_code}`,
                         });
                       } catch (error) {
-                        // User cancelled or error
+                        // User cancelled
                       }
                     }}
                   >
@@ -336,7 +475,7 @@ const Profile = () => {
               </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-green-200 dark:border-green-800">
+            <div className="bg-green-100/50 dark:bg-green-900/20 p-4 rounded-lg space-y-2">
               <h4 className="font-semibold text-sm mb-2 text-green-700 dark:text-green-400">
                 Como funciona?
               </h4>
@@ -355,7 +494,6 @@ const Profile = () => {
         </Card>
       )}
 
-      {/* Subscription Management */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

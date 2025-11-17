@@ -15,14 +15,66 @@ interface UserProfile {
   nivel_atividade: string
   objetivo: string
   assinatura_ativa: boolean
-  share_code?: string | null  // Código de compartilhamento para nutricionistas
-  user_type?: string | null    // Tipo de usuário (client/nutritionist)
+  share_code?: string | null
+  user_type?: string | null
 }
+
+// Tipos de objetivos disponíveis
+export type GoalType = 'lose_aggressive' | 'lose_moderate' | 'maintenance' | 'gain_lean' | 'gain_aggressive'
+
+// Configuração de cada objetivo
+export const GOAL_CONFIGS = {
+  lose_aggressive: {
+    label: 'Secar Tudo',
+    description: 'Déficit de 750 kcal/dia',
+    calorieAdjustment: -750,
+    proteinMultiplier: 2.2,
+    icon: 'Flame',
+    color: 'text-red-500',
+    borderColor: 'ring-red-500'
+  },
+  lose_moderate: {
+    label: 'Emagrecer Saudável',
+    description: 'Déficit de 500 kcal/dia',
+    calorieAdjustment: -500,
+    proteinMultiplier: 2.0,
+    icon: 'Target',
+    color: 'text-orange-500',
+    borderColor: 'ring-orange-500'
+  },
+  maintenance: {
+    label: 'Manter Peso',
+    description: 'Sem alteração calórica',
+    calorieAdjustment: 0,
+    proteinMultiplier: 1.8,
+    icon: 'Scale',
+    color: 'text-blue-500',
+    borderColor: 'ring-blue-500'
+  },
+  gain_lean: {
+    label: 'Ganho Limpo',
+    description: 'Superávit de 300 kcal/dia',
+    calorieAdjustment: 300,
+    proteinMultiplier: 2.4,
+    icon: 'TrendingUp',
+    color: 'text-green-500',
+    borderColor: 'ring-green-500'
+  },
+  gain_aggressive: {
+    label: 'Hipertrofia Total',
+    description: 'Superávit de 500 kcal/dia',
+    calorieAdjustment: 500,
+    proteinMultiplier: 2.4,
+    icon: 'Zap',
+    color: 'text-purple-500',
+    borderColor: 'ring-purple-500'
+  }
+} as const
 
 export const useProfile = (userPhone: string) => {
   const queryClient = useQueryClient()
 
-  // Fetch user profile - CORRIGIDO: usando 'users' ao invés de 'usuarios'
+  // Fetch user profile
   const { 
     data: profile, 
     isLoading, 
@@ -30,7 +82,6 @@ export const useProfile = (userPhone: string) => {
   } = useQuery({
     queryKey: ['userProfile', userPhone],
     queryFn: async (): Promise<UserProfile | null> => {
-      console.log('Fetching profile for phone:', userPhone)
       const phone = normalizePhone(userPhone)
       const { data, error } = await supabase
         .from('users')
@@ -92,7 +143,7 @@ export const useProfile = (userPhone: string) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userProfile', userPhone] })
       queryClient.invalidateQueries({ queryKey: ['dietData', userPhone] })
-      toast.success('Perfil atualizado com sucesso!')
+      toast.success('🎯 Perfil atualizado! Sua nova dieta está pronta!')
     },
     onError: (error) => {
       console.error('Error updating profile:', error)
@@ -100,6 +151,20 @@ export const useProfile = (userPhone: string) => {
     }
   })
 
+  /**
+   * Calcula BMR usando Mifflin-St Jeor (mais precisa que Harris-Benedict)
+   */
+  const calculateBMR = (peso: number, altura: number, idade: number, sexo: string): number => {
+    if (sexo === 'M') {
+      return (10 * peso) + (6.25 * altura) - (5 * idade) + 5
+    } else {
+      return (10 * peso) + (6.25 * altura) - (5 * idade) - 161
+    }
+  }
+
+  /**
+   * Recalcula a dieta completa baseada no perfil atualizado
+   */
   const recalculateDiet = async (profileData: Partial<UserProfile>) => {
     const currentProfile = profile
     if (!currentProfile) return
@@ -110,35 +175,26 @@ export const useProfile = (userPhone: string) => {
     const idade = profileData.idade || currentProfile.idade
     const sexo = profileData.sexo || currentProfile.sexo
     const nivelAtividade = parseInt(profileData.nivel_atividade || currentProfile.nivel_atividade)
-    const objetivo = parseInt(profileData.objetivo || currentProfile.objetivo)
+    const objetivo = (profileData.objetivo || currentProfile.objetivo) as GoalType
 
-    // Calculate BMR using Harris-Benedict equation
-    let bmr: number
-    if (sexo === 'M') {
-      bmr = 88.362 + (13.397 * peso) + (4.799 * altura) - (5.677 * idade)
-    } else {
-      bmr = 447.593 + (9.247 * peso) + (3.098 * altura) - (4.330 * idade)
-    }
+    // 1. Calculate BMR using Mifflin-St Jeor
+    const bmr = calculateBMR(peso, altura, idade, sexo)
 
-    // Activity level multipliers
+    // 2. Activity level multipliers (TDEE)
     const activityMultipliers = [1.2, 1.375, 1.55, 1.725, 1.9]
-    const neat = bmr * (activityMultipliers[nivelAtividade - 1] - 1)
-    const metaBase = bmr + neat
+    const tdee = bmr * activityMultipliers[nivelAtividade - 1]
+    const neat = tdee - bmr
 
-    // Goal adjustments
-    let metaAlvo = metaBase
-    if (objetivo === 1) { // Emagrecer
-      metaAlvo = metaBase - 500
-    } else if (objetivo === 3) { // Ganhar peso
-      metaAlvo = metaBase + 300
-    }
+    // 3. Apply goal adjustment
+    const goalConfig = GOAL_CONFIGS[objetivo] || GOAL_CONFIGS.maintenance
+    const metaAlvo = tdee + goalConfig.calorieAdjustment
 
-    // Macro calculations
-    const proteinGrams = peso * 2.2 // 2.2g per kg
+    // 4. Macro calculations
+    const proteinGrams = peso * goalConfig.proteinMultiplier
     const fatGrams = (metaAlvo * 0.25) / 9 // 25% of calories from fat
     const carbGrams = (metaAlvo - (proteinGrams * 4) - (fatGrams * 9)) / 4
 
-    // Update diet table
+    // 5. Update diet table
     await supabase
       .from('dietas')
       .upsert({
@@ -150,8 +206,40 @@ export const useProfile = (userPhone: string) => {
         gasto_basal: Math.round(bmr),
         neat: Math.round(neat),
         meta_alvo: Math.round(metaAlvo),
-        meta_base: Math.round(metaBase)
+        meta_base: Math.round(tdee)
       })
+  }
+
+  /**
+   * Simula cálculo de dieta sem salvar (para preview em tempo real)
+   */
+  const simulateDiet = (
+    peso: number,
+    altura: number,
+    idade: number,
+    sexo: string,
+    nivelAtividade: number,
+    objetivo: GoalType
+  ) => {
+    const bmr = calculateBMR(peso, altura, idade, sexo)
+    const activityMultipliers = [1.2, 1.375, 1.55, 1.725, 1.9]
+    const tdee = bmr * activityMultipliers[nivelAtividade - 1]
+    
+    const goalConfig = GOAL_CONFIGS[objetivo] || GOAL_CONFIGS.maintenance
+    const metaAlvo = tdee + goalConfig.calorieAdjustment
+    
+    const proteinGrams = peso * goalConfig.proteinMultiplier
+    const fatGrams = (metaAlvo * 0.25) / 9
+    const carbGrams = (metaAlvo - (proteinGrams * 4) - (fatGrams * 9)) / 4
+
+    return {
+      bmr: Math.round(bmr),
+      tdee: Math.round(tdee),
+      metaAlvo: Math.round(metaAlvo),
+      proteina: Math.round(proteinGrams),
+      carboidrato: Math.round(carbGrams),
+      gordura: Math.round(fatGrams)
+    }
   }
 
   return {
@@ -159,6 +247,7 @@ export const useProfile = (userPhone: string) => {
     isLoading,
     isError,
     updateProfile: updateProfileMutation.mutate,
-    isUpdating: updateProfileMutation.isPending
+    isUpdating: updateProfileMutation.isPending,
+    simulateDiet
   }
 }
