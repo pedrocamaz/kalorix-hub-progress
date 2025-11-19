@@ -177,17 +177,34 @@ export const useProfile = (userPhone: string) => {
     const nivelAtividade = parseInt(profileData.nivel_atividade || currentProfile.nivel_atividade)
     const objetivo = (profileData.objetivo || currentProfile.objetivo) as GoalType
 
+    // 🔥 BUSCAR TIPO DE DIETA ATUAL
+    const { data: dietaAtual } = await supabase
+      .from('dietas')
+      .select('dieta_dinamica')
+      .eq('usuario_telefone', normalizePhone(userPhone))
+      .maybeSingle()
+    
+    const dietaDinamica = dietaAtual?.dieta_dinamica ?? true // Padrão: dinâmica
+
     // 1. Calculate BMR using Mifflin-St Jeor
     const bmr = calculateBMR(peso, altura, idade, sexo)
 
-    // 2. Activity level multipliers (TDEE)
-    const activityMultipliers = [1.2, 1.375, 1.55, 1.725, 1.9]
-    const tdee = bmr * activityMultipliers[nivelAtividade - 1]
-    const neat = tdee - bmr
+    // 2. 🔥 CALCULAR META BASE BASEADO NO TIPO DE DIETA
+    const neat = 350 // NEAT fixo
+    let bonusAtividade = 0
+    
+    // Se ESTÁTICA: adiciona bonus de atividade
+    if (!dietaDinamica) {
+      const bonusMap = [0, 200, 400, 600, 800]
+      bonusAtividade = bonusMap[nivelAtividade - 1] || 0
+    }
+    
+    // META BASE = TMB + NEAT + bonus (se estática)
+    const metaBase = bmr + neat + bonusAtividade
 
     // 3. Apply goal adjustment
     const goalConfig = GOAL_CONFIGS[objetivo] || GOAL_CONFIGS.maintenance
-    const metaAlvo = tdee + goalConfig.calorieAdjustment
+    const metaAlvo = metaBase + goalConfig.calorieAdjustment
 
     // 4. Macro calculations
     const proteinGrams = peso * goalConfig.proteinMultiplier
@@ -204,14 +221,18 @@ export const useProfile = (userPhone: string) => {
         carboidrato_gramas: Math.round(carbGrams).toString(),
         gordura_gramas: Math.round(fatGrams).toString(),
         gasto_basal: Math.round(bmr),
-        neat: Math.round(neat),
+        tbm: Math.round(bmr),
+        neat: Math.round(neat + bonusAtividade), // NEAT "efetivo" (inclui bonus se estático)
         meta_alvo: Math.round(metaAlvo),
-        meta_base: Math.round(tdee)
+        meta_base: Math.round(metaBase),
+        dieta_dinamica: dietaDinamica // 🔥 Mantém o tipo atual
       })
   }
 
   /**
    * Simula cálculo de dieta sem salvar (para preview em tempo real)
+   * 🔥 NOTA: Esta função assume dieta DINÂMICA por padrão (sem bonus de atividade)
+   * Para calcular dieta estática, use a versão completa com dietaDinamica parameter
    */
   const simulateDiet = (
     peso: number,
@@ -219,14 +240,24 @@ export const useProfile = (userPhone: string) => {
     idade: number,
     sexo: string,
     nivelAtividade: number,
-    objetivo: GoalType
+    objetivo: GoalType,
+    dietaDinamica: boolean = true // 🔥 NOVO PARÂMETRO (padrão: dinâmica)
   ) => {
     const bmr = calculateBMR(peso, altura, idade, sexo)
-    const activityMultipliers = [1.2, 1.375, 1.55, 1.725, 1.9]
-    const tdee = bmr * activityMultipliers[nivelAtividade - 1]
+    
+    // 🔥 CALCULAR META BASE BASEADO NO TIPO DE DIETA
+    const neat = 350
+    let bonusAtividade = 0
+    
+    if (!dietaDinamica) {
+      const bonusMap = [0, 200, 400, 600, 800]
+      bonusAtividade = bonusMap[nivelAtividade - 1] || 0
+    }
+    
+    const metaBase = bmr + neat + bonusAtividade
     
     const goalConfig = GOAL_CONFIGS[objetivo] || GOAL_CONFIGS.maintenance
-    const metaAlvo = tdee + goalConfig.calorieAdjustment
+    const metaAlvo = metaBase + goalConfig.calorieAdjustment
     
     const proteinGrams = peso * goalConfig.proteinMultiplier
     const fatGrams = (metaAlvo * 0.25) / 9
@@ -234,7 +265,7 @@ export const useProfile = (userPhone: string) => {
 
     return {
       bmr: Math.round(bmr),
-      tdee: Math.round(tdee),
+      tdee: Math.round(metaBase), // 🔥 META BASE (não TDEE tradicional)
       metaAlvo: Math.round(metaAlvo),
       proteina: Math.round(proteinGrams),
       carboidrato: Math.round(carbGrams),

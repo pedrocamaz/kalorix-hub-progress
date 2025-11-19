@@ -8,6 +8,7 @@ type Diet = {
   proteinGoal: number;
   carbGoal: number;
   fatGoal: number;
+  dieta_dinamica?: boolean; // 🔥 Novo campo
 };
 
 type MealToday = {
@@ -34,7 +35,7 @@ export function useClientLiveMetrics(clientId: string | undefined, clientPhone: 
     queryFn: async (): Promise<Diet | null> => {
       const { data, error } = await supabase
         .from('dietas')
-        .select('calorias_diarias, proteina_gramas, carboidrato_gramas, gordura_gramas')
+        .select('calorias_diarias, proteina_gramas, carboidrato_gramas, gordura_gramas, dieta_dinamica')
         .eq('usuario_telefone', phone)
         .maybeSingle();
 
@@ -46,6 +47,7 @@ export function useClientLiveMetrics(clientId: string | undefined, clientPhone: 
         proteinGoal: Number(data.proteina_gramas || 0),
         carbGoal: Number(data.carboidrato_gramas || 0),
         fatGoal: Number(data.gordura_gramas || 0),
+        dieta_dinamica: data.dieta_dinamica ?? true, // 🔥 Padrão TRUE
       };
     },
     enabled: !!phone,

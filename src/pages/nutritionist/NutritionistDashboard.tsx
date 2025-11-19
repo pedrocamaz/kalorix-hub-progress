@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogOut, Plus, RefreshCw, Search, TrendingUp, Users, Activity, Calendar } from 'lucide-react';
+import { LogOut, Plus, RefreshCw, Search, TrendingUp, Users, Activity, Calendar, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useNutritionistClients } from '@/hooks/useNutritionistClients';
 import AddClientModal from '@/components/nutritionist/AddClientModal';
+import CreateClientModal from '@/components/nutritionist/CreateClientModal';
 import { MacroMiniPie } from '@/components/nutritionist/MacroMiniPie';
 import { AdherenceBar } from '@/components/nutritionist/AdherenceBar';
 import { InsightBadge } from '@/components/nutritionist/InsightBadge';
@@ -19,6 +20,7 @@ export default function NutritionistDashboard() {
   const { clients, summary, loading, refreshing, refresh } = useNutritionistClients();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -53,7 +55,7 @@ export default function NutritionistDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-green-50">
       {/* Header */}
       <header className="border-b bg-white dark:bg-gray-900 sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -87,7 +89,7 @@ export default function NutritionistDashboard() {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto p-6 space-y-6">
         {/* Cards de Resumo */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card>
@@ -160,22 +162,21 @@ export default function NutritionistDashboard() {
         </div>
 
         {/* Barra de Ações */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar cliente por nome ou código..."
-              className="pl-9"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => setShowAddModal(true)}
             className="bg-green-600 hover:bg-green-700"
           >
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Cliente
+          </Button>
+          <Button
+            onClick={() => setShowCreateModal(true)}
+            variant="outline"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Criar Novo Cliente
           </Button>
         </div>
 
@@ -281,6 +282,13 @@ export default function NutritionistDashboard() {
       <AddClientModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
+        onSuccess={refresh}
+      />
+
+      {/* Modal de Criar Cliente */}
+      <CreateClientModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
         onSuccess={refresh}
       />
     </div>

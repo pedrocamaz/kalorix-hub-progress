@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+
 // Adicione (se ainda não tiver) os tipos auxiliares
 type SupabaseUserRow = {
   id: string;
@@ -84,6 +85,32 @@ export interface DashboardSummary {
   total_clients_count: number;
   total_meals_week: number;
   avg_calories_week: number;
+}
+
+// Add new types for client creation and diet update
+export interface CreateClientData {
+  name: string;
+  phone: string;
+  email?: string;
+  peso: number;
+  altura: number;
+  idade: number;
+  sexo: 'M' | 'F';
+  goal?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  nivel_atividade?: number;
+  dieta_dinamica?: boolean;
+}
+
+export interface MacroData {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  dieta_dinamica?: boolean;
 }
 
 /**
@@ -325,6 +352,106 @@ export function useNutritionistClients() {
   };
 
   /**
+   * Cria um novo cliente gerenciado pelo nutricionista
+   * UPDATED: Now includes peso, altura, idade, sexo
+   */
+  const createClient = async (data: CreateClientData): Promise<boolean> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Call RPC function to create client with physical data
+      const { data: rpcData, error } = await supabase.rpc('create_managed_client', {
+        p_nutritionist_user_id: user.id,
+        p_name: data.name,
+        p_phone: data.phone,
+        p_email: data.email || null,
+        p_peso: data.peso,
+        p_altura: data.altura,
+        p_idade: data.idade,
+        p_sexo: data.sexo,
+        p_goal: data.goal || 'maintenance',
+        p_calories: data.calories,
+        p_protein: data.protein,
+        p_carbs: data.carbs,
+        p_fat: data.fat,
+      });
+
+      if (error) throw error;
+
+      // Parse result
+      const result = typeof rpcData === 'string' ? JSON.parse(rpcData) : rpcData;
+      
+      if (!result.success) {
+        toast.error(result.error || 'Erro ao criar cliente');
+        return false;
+      }
+
+      toast.success(`Cliente ${result.client.name} criado com sucesso! 🎉`, {
+        description: `IMC: ${result.client.imc} | Peso: ${result.client.peso}kg`,
+      });
+      
+      // Reload clients list
+      await fetchClients();
+      await fetchSummary();
+      
+      return true;
+    } catch (error: any) {
+      console.error('Error creating client:', error);
+      toast.error(error.message || 'Erro ao criar cliente');
+      return false;
+    }
+  };
+
+  /**
+   * Atualiza as metas de dieta de um cliente
+   */
+  const updateDiet = async (clientId: string, macros: MacroData): Promise<boolean> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Call RPC function to update diet
+      const { data: rpcData, error } = await supabase.rpc('update_client_diet_targets', {
+        p_nutritionist_user_id: user.id,
+        p_client_id: clientId,
+        p_calories: macros.calories,
+        p_protein: macros.protein,
+        p_carbs: macros.carbs,
+        p_fat: macros.fat,
+        p_dieta_dinamica: macros.dieta_dinamica,
+      });
+
+      if (error) throw error;
+
+      // Parse result
+      const result = typeof rpcData === 'string' ? JSON.parse(rpcData) : rpcData;
+      
+      if (!result.success) {
+        toast.error(result.error || 'Erro ao atualizar dieta');
+        return false;
+      }
+
+      toast.success('Dieta atualizada com sucesso! ✨');
+      
+      // Reload clients list to reflect changes
+      await fetchClients();
+      
+      return true;
+    } catch (error: any) {
+      console.error('Error updating diet:', error);
+      toast.error(error.message || 'Erro ao atualizar dieta');
+      return false;
+    }
+  };
+
+  /**
    * Atualiza notas de um cliente
    */
   const updateClientNotes = async (clientId: string, notes: string): Promise<boolean> => {
@@ -495,6 +622,8 @@ export function useNutritionistClients() {
     loading,
     refreshing,
     addClientByCode,
+    createClient, // UPDATED
+    updateDiet,
     updateClientNotes,
     updateClientTags,
     removeClient,

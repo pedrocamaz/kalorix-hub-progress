@@ -9,14 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, User, Phone, Mail, Calendar, Target, FileText, TrendingUp } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, Calendar, Target, FileText, TrendingUp, Edit, Flame, Award, Zap, Dumbbell } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatShareCode } from "@/lib/shareCode";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend, Area, AreaChart } from 'recharts';
 import { calcImc, classifyImc, calcAdherence, buildInsight } from '@/lib/nutritionistMetrics';
 import { InsightBadge } from '@/components/nutritionist/InsightBadge';
 import { Progress } from '@/components/ui/progress';
 import { useClientLiveMetrics } from '@/hooks/useClientLiveMetrics';
+import EditDietModal from '@/components/nutritionist/EditDietModal';
 
 interface ClientData {
   id: string;
@@ -52,6 +53,15 @@ interface Goal {
   created_at: string;
 }
 
+// GOAL TYPE LABELS
+const GOAL_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  lose_aggressive: { label: 'Secar Tudo 🔥', icon: '🔥', color: 'text-red-600' },
+  lose_moderate: { label: 'Emagrecer Saudável 📉', icon: '📉', color: 'text-orange-600' },
+  maintenance: { label: 'Manutenção ⚖️', icon: '⚖️', color: 'text-blue-600' },
+  gain_lean: { label: 'Ganho Massa Magra 💪', icon: '💪', color: 'text-green-600' },
+  gain_aggressive: { label: 'Bulking 🏋️', icon: '🏋️', color: 'text-purple-600' },
+};
+
 export default function ClientDetail() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
@@ -78,6 +88,15 @@ export default function ClientDetail() {
   const { diet, todaysMeals, totals, remaining, isLoading: isLiveLoading } = useClientLiveMetrics(clientId, client?.telefone || '');
 
   const [adherence7d, setAdherence7d] = useState<{ percent: number; daysWithMeals: number; referenceDays: number } | null>(null);
+
+  // Add state for Edit Diet Modal
+  const [showEditDiet, setShowEditDiet] = useState(false);
+
+  // New state for gamified charts
+  const [weeklyCalories, setWeeklyCalories] = useState<Array<{ day: string; calories: number; target: number }>>([]);
+  const [weeklyMacros, setWeeklyMacros] = useState<Array<{ day: string; protein: number; carbs: number; fat: number }>>([]);
+  const [weightHistory, setWeightHistory] = useState<Array<{ date: string; weight: number }>>([]);
+  const [todayExerciseCalories, setTodayExerciseCalories] = useState(0);
 
   useEffect(() => {
     fetchClientData();
@@ -139,6 +158,94 @@ export default function ClientDetail() {
 
       const mealDates = (meals7d || []).map(m => `${m.data_consumo}T00:00:00`);
       setAdherence7d(calcAdherence(mealDates));
+
+      // FETCH WEIGHT HISTORY FROM registros_peso - Usando user_telefone como ID
+      const { data: weightData, error: weightError } = await supabase
+        .from('registros_peso')
+        .select('peso, created_at')
+        .eq('user_telefone', clientData.telefone)
+        .order('created_at', { ascending: true })
+        .limit(30); // Last 30 entries
+
+      if (weightError) {
+        console.error('Error fetching weight history:', weightError);
+        // Não bloqueia o carregamento se falhar
+      }
+      
+      const formattedWeightHistory = (weightData || []).map(w => ({
+        date: new Date(w.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        weight: parseFloat(w.peso),
+      }));
+      setWeightHistory(formattedWeightHistory);
+
+      // FETCH TODAY'S EXERCISE CALORIES
+      const today = new Date().toISOString().split('T')[0];
+      const { data: workoutsToday, error: workoutsError } = await supabase
+        .from('registros_treino')
+        .select('calorias_queimadas')
+        .eq('usuario_telefone', clientData.telefone)
+        .eq('data_treino', today);
+
+      if (!workoutsError) {
+        const exerciseCals = (workoutsToday || []).reduce(
+          (sum, w) => sum + (Number(w.calorias_queimadas) || 0),
+          0
+        );
+        console.log('🏋️ Treinos hoje:', workoutsToday);
+        console.log('🔥 Total calorias exercícios:', exerciseCals);
+        setTodayExerciseCalories(exerciseCals);
+      }
+
+      // FETCH WEEKLY CALORIES (last 7 days)
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        return d.toISOString().split('T')[0];
+      });
+
+      const { data: mealsWeekData } = await supabase
+        .from('registros_alimentares')
+        .select('data_consumo, calorias')
+        .eq('usuario_id', clientId)
+        .in('data_consumo', last7Days);
+
+      // Get target calories from diet
+      const { data: dietTarget } = await supabase
+        .from('dietas')
+        .select('calorias_diarias')
+        .eq('usuario_telefone', clientData?.telefone || '')
+        .maybeSingle();
+
+      const targetCals = dietTarget?.calorias_diarias || 2000;
+
+      const caloriesByDay = last7Days.map(date => {
+        const dayMeals = (mealsWeekData || []).filter(m => m.data_consumo === date);
+        const totalCals = dayMeals.reduce((sum, m) => sum + (m.calorias || 0), 0);
+        return {
+          day: new Date(date).toLocaleDateString('pt-BR', { weekday: 'short' }),
+          calories: Math.round(totalCals),
+          target: targetCals,
+        };
+      });
+      setWeeklyCalories(caloriesByDay);
+
+      // FETCH WEEKLY MACROS (last 7 days)
+      const { data: macrosWeekData } = await supabase
+        .from('registros_alimentares')
+        .select('data_consumo, proteinas, carboidratos, gorduras')
+        .eq('usuario_id', clientId)
+        .in('data_consumo', last7Days);
+
+      const macrosByDay = last7Days.map(date => {
+        const dayMeals = (macrosWeekData || []).filter(m => m.data_consumo === date);
+        return {
+          day: new Date(date).toLocaleDateString('pt-BR', { weekday: 'short' }),
+          protein: Math.round(dayMeals.reduce((sum, m) => sum + (m.proteinas || 0), 0)),
+          carbs: Math.round(dayMeals.reduce((sum, m) => sum + (m.carboidratos || 0), 0)),
+          fat: Math.round(dayMeals.reduce((sum, m) => sum + (m.gorduras || 0), 0)),
+        };
+      });
+      setWeeklyMacros(macrosByDay);
     } catch (error) {
       console.error("Error fetching client data:", error);
       toast({
@@ -282,6 +389,11 @@ export default function ClientDetail() {
         {labels[status] || status}
       </Badge>
     );
+  };
+
+  const getGoalDisplay = (objetivo: string | undefined) => {
+    if (!objetivo) return { label: 'Não definido', icon: '❓', color: 'text-gray-600' };
+    return GOAL_LABELS[objetivo] || { label: objetivo, icon: '🎯', color: 'text-gray-600' };
   };
 
   // Exemplo de dados derivados (garantir arrays vazios se não houver consultas ainda)
@@ -438,11 +550,34 @@ export default function ClientDetail() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className={`grid gap-4 ${diet?.dieta_dinamica ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
                   <div>
-                    <p className="text-sm text-muted-foreground">Meta (kcal)</p>
+                    <p className="text-sm text-muted-foreground">Meta Base (kcal)</p>
                     <p className="text-2xl font-bold">{diet?.caloriesGoal ?? 0}</p>
+                    {diet?.dieta_dinamica && (
+                      <p className="text-xs text-purple-600 font-medium">🔥 Dinâmica</p>
+                    )}
                   </div>
+                  
+                  {diet?.dieta_dinamica && (
+                    <div className="bg-purple-50 rounded-lg p-3 border-2 border-purple-200">
+                      <p className="text-sm text-muted-foreground">Meta do Dia (kcal)</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-2xl font-bold text-purple-700">
+                          {(diet?.caloriesGoal ?? 0) + todayExerciseCalories}
+                        </p>
+                        {todayExerciseCalories > 0 && (
+                          <Dumbbell className="h-4 w-4 text-purple-600" />
+                        )}
+                      </div>
+                      {todayExerciseCalories > 0 ? (
+                        <p className="text-xs text-purple-600 font-medium">+{todayExerciseCalories} de treinos</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Sem treinos hoje</p>
+                      )}
+                    </div>
+                  )}
+                  
                   <div>
                     <p className="text-sm text-muted-foreground">Consumido</p>
                     <p className="text-2xl font-bold text-primary">{Math.round(totals.calories)}</p>
@@ -500,20 +635,62 @@ export default function ClientDetail() {
               </CardContent>
             </Card>
 
-            {/* Objetivo do Cliente - Destaque */}
-            {client.objetivo && (
-              <Card className="border-green-200 bg-green-50">
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Target className="h-5 w-5 text-green-600" />
-                    <CardTitle className="text-green-900">Objetivo do Cliente</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-lg text-green-800 font-medium">{client.objetivo}</p>
-                </CardContent>
-              </Card>
-            )}
+            {/* UPDATED: Objetivo do Cliente - With Proper Display */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {client.objetivo && (
+                <Card className="border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <Target className="h-6 w-6 text-green-600" />
+                      <div>
+                        <CardTitle className="text-green-900">Objetivo do Cliente</CardTitle>
+                        <CardDescription>Meta nutricional definida</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-3">
+                      <span className="text-4xl">{getGoalDisplay(client.objetivo).icon}</span>
+                      <div>
+                        <p className={`text-2xl font-bold ${getGoalDisplay(client.objetivo).color}`}>
+                          {getGoalDisplay(client.objetivo).label}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 🔥 BADGE TIPO DE DIETA */}
+              {diet && (
+                <Card className={`border-2 ${diet.dieta_dinamica ? 'border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50' : 'border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50'}`}>
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <Flame className="h-6 w-6 text-purple-600" />
+                      <div>
+                        <CardTitle className="text-purple-900">Tipo de Dieta</CardTitle>
+                        <CardDescription>Modo de cálculo calórico</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-3">
+                      <span className="text-4xl">{diet.dieta_dinamica ? '🔥' : '⚡'}</span>
+                      <div>
+                        <p className={`text-2xl font-bold ${diet.dieta_dinamica ? 'text-purple-700' : 'text-amber-700'}`}>
+                          {diet.dieta_dinamica ? 'Dinâmica' : 'Estática'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {diet.dieta_dinamica 
+                            ? 'Treinos adicionam calorias' 
+                            : 'Treinos já inclusos na meta'}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card>
@@ -584,73 +761,296 @@ export default function ClientDetail() {
               </CardContent>
             </Card>
 
-            {/* Gráficos e Resumo */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader><CardTitle>Evolução de Peso</CardTitle></CardHeader>
-                <CardContent className="h-64">
-                  <ResponsiveContainer>
-                    <LineChart data={weightData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line dataKey="weight" stroke="#10b981" strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle>Calorias Diárias (Últimos 14 dias)</CardTitle></CardHeader>
-                <CardContent className="h-64">
-                  <ResponsiveContainer>
-                    <BarChart data={dailyCalories}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="calories" fill="#f59e0b" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle>Macros Semana</CardTitle></CardHeader>
-                <CardContent className="h-64">
-                  <ResponsiveContainer>
-                    <BarChart data={macroTrend}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="day" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="proteina" name="Proteína" fill="#0ea5e9" />
-                      <Bar dataKey="carbo" name="Carbo" fill="#22c55e" />
-                      <Bar dataKey="gordura" name="Gordura" fill="#f59e0b" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle>Resumo Nutricional</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <p>
-                    IMC: {calcImc(client?.peso ?? null, client?.altura ?? null)} (
-                    {classifyImc(calcImc(client?.peso ?? null, client?.altura ?? null))})
-                  </p>
-                  <p>Adesão (7d): {adherence.percent}% ({adherence.daysWithMeals}/{adherence.referenceDays} dias)</p>
-                  <div className="mt-2">
-                    <InsightBadge text={insight} />
+            {/* GAMIFIED: Weight Evolution Chart */}
+            <Card className="border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Award className="h-6 w-6 text-orange-600" />
+                    <div>
+                      <CardTitle className="text-orange-900">🏆 Evolução de Peso</CardTitle>
+                      <CardDescription>Progresso ao longo do tempo</CardDescription>
+                    </div>
                   </div>
-                  <Button variant="outline" className="mt-2" onClick={handleGeneratePdf}>
-                    Gerar Relatório PDF
+                  {weightHistory.length > 0 && (
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                      {weightHistory.length} registros
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {weightHistory.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-center">
+                    <TrendingUp className="h-16 w-16 text-orange-300 mb-4" />
+                    <p className="text-orange-700 font-medium">Nenhum registro de peso ainda</p>
+                    <p className="text-sm text-muted-foreground">Os dados aparecerão aqui quando o cliente registrar o peso</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={weightHistory}>
+                      <defs>
+                        <linearGradient id="weightGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f97316" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#f97316" stopOpacity={0.1}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#fed7aa" />
+                      <XAxis 
+                        dataKey="date" 
+                        stroke="#c2410c"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis 
+                        stroke="#c2410c"
+                        style={{ fontSize: '12px' }}
+                        domain={['dataMin - 2', 'dataMax + 2']}
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: '#fff7ed', 
+                          border: '2px solid #fb923c',
+                          borderRadius: '8px'
+                        }}
+                        formatter={(value: number) => [`${value.toFixed(1)} kg`, 'Peso']}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="weight" 
+                        stroke="#f97316" 
+                        strokeWidth={3}
+                        fill="url(#weightGradient)"
+                        dot={{ fill: '#f97316', r: 5 }}
+                        activeDot={{ r: 8, fill: '#ea580c' }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+                {weightHistory.length > 1 && (
+                  <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+                    <div className="bg-white/50 rounded-lg p-3 border border-orange-200">
+                      <p className="text-xs text-orange-600 font-medium">Peso Inicial</p>
+                      <p className="text-xl font-bold text-orange-900">{weightHistory[0].weight.toFixed(1)} kg</p>
+                    </div>
+                    <div className="bg-white/50 rounded-lg p-3 border border-orange-200">
+                      <p className="text-xs text-orange-600 font-medium">Peso Atual</p>
+                      <p className="text-xl font-bold text-orange-900">{weightHistory[weightHistory.length - 1].weight.toFixed(1)} kg</p>
+                    </div>
+                    <div className="bg-white/50 rounded-lg p-3 border border-orange-200">
+                      <p className="text-xs text-orange-600 font-medium">Variação</p>
+                      <p className={`text-xl font-bold ${
+                        (weightHistory[weightHistory.length - 1].weight - weightHistory[0].weight) < 0 
+                          ? 'text-green-600' 
+                          : 'text-red-600'
+                      }`}>
+                        {(weightHistory[weightHistory.length - 1].weight - weightHistory[0].weight) > 0 ? '+' : ''}
+                        {(weightHistory[weightHistory.length - 1].weight - weightHistory[0].weight).toFixed(1)} kg
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* GAMIFIED: Weekly Calories Profile */}
+            <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Flame className="h-6 w-6 text-purple-600" />
+                  <div>
+                    <CardTitle className="text-purple-900">🔥 Perfil Calórico Semanal</CardTitle>
+                    <CardDescription>Consumo vs Meta nos últimos 7 dias</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {weeklyCalories.every(d => d.calories === 0) ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-center">
+                    <Flame className="h-16 w-16 text-purple-300 mb-4" />
+                    <p className="text-purple-700 font-medium">Sem dados de calorias esta semana</p>
+                    <p className="text-sm text-muted-foreground">Aguardando registros do cliente</p>
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={weeklyCalories}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e9d5ff" />
+                        <XAxis 
+                          dataKey="day" 
+                          stroke="#7e22ce"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <YAxis 
+                          stroke="#7e22ce"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#faf5ff', 
+                            border: '2px solid #a855f7',
+                            borderRadius: '8px'
+                          }}
+                        />
+                        <Legend />
+                        <Bar 
+                          dataKey="calories" 
+                          name="Consumido" 
+                          fill="#a855f7" 
+                          radius={[8, 8, 0, 0]}
+                        />
+                        <Bar 
+                          dataKey="target" 
+                          name="Meta" 
+                          fill="#d8b4fe" 
+                          radius={[8, 8, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 bg-white/50 rounded-lg p-4 border border-purple-200">
+                      <p className="text-sm font-medium text-purple-900 mb-2">📊 Análise Rápida:</p>
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Média Consumida:</span>
+                          <span className="ml-2 font-bold text-purple-700">
+                            {Math.round(weeklyCalories.reduce((sum, d) => sum + d.calories, 0) / 7)} kcal/dia
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Dias Acima da Meta:</span>
+                          <span className="ml-2 font-bold text-purple-700">
+                            {weeklyCalories.filter(d => d.calories > d.target).length}/7
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* GAMIFIED: Weekly Macros Distribution */}
+            <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Zap className="h-6 w-6 text-blue-600" />
+                  <div>
+                    <CardTitle className="text-blue-900">⚡ Distribuição de Macros (7 dias)</CardTitle>
+                    <CardDescription>Proteína, Carboidratos e Gorduras</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {weeklyMacros.every(d => d.protein === 0 && d.carbs === 0 && d.fat === 0) ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-center">
+                    <Zap className="h-16 w-16 text-blue-300 mb-4" />
+                    <p className="text-blue-700 font-medium">Sem dados de macros esta semana</p>
+                    <p className="text-sm text-muted-foreground">Aguardando registros do cliente</p>
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={weeklyMacros}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#bfdbfe" />
+                        <XAxis 
+                          dataKey="day" 
+                          stroke="#1e40af"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <YAxis 
+                          stroke="#1e40af"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#eff6ff', 
+                            border: '2px solid #3b82f6',
+                            borderRadius: '8px'
+                          }}
+                        />
+                        <Legend />
+                        <Bar dataKey="protein" name="Proteína (g)" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="carbs" name="Carboidratos (g)" fill="#fbbf24" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="fat" name="Gorduras (g)" fill="#fcd34d" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 bg-white/50 rounded-lg p-4 border border-blue-200">
+                      <p className="text-sm font-medium text-blue-900 mb-2">💡 Insights:</p>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                          <span className="text-muted-foreground">Média Proteína:</span>
+                          <span className="font-bold text-blue-700">
+                            {Math.round(weeklyMacros.reduce((sum, d) => sum + d.protein, 0) / 7)}g/dia
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                          <span className="text-muted-foreground">Média Carboidratos:</span>
+                          <span className="font-bold text-blue-700">
+                            {Math.round(weeklyMacros.reduce((sum, d) => sum + d.carbs, 0) / 7)}g/dia
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                          <span className="text-muted-foreground">Média Gorduras:</span>
+                          <span className="font-bold text-blue-700">
+                            {Math.round(weeklyMacros.reduce((sum, d) => sum + d.fat, 0) / 7)}g/dia
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Summary Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Resumo Nutricional</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowEditDiet(true)}
+                    className="gap-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Editar Dieta
                   </Button>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p>
+                  IMC: {calcImc(client?.peso ?? null, client?.altura ?? null)} (
+                  {classifyImc(calcImc(client?.peso ?? null, client?.altura ?? null))})
+                </p>
+                <p>Adesão (7d): {adherence.percent}% ({adherence.daysWithMeals}/{adherence.referenceDays} dias)</p>
+                
+                {diet && (
+                  <div className="pt-2 border-t">
+                    <p className="font-medium">Modo da Dieta:</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant={diet.dieta_dinamica ? "default" : "secondary"}>
+                        {diet.dieta_dinamica ? '🔥 Dinâmica' : '⚡ Estática'}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {diet.dieta_dinamica 
+                          ? `Meta hoje: ${(diet.caloriesGoal + todayExerciseCalories)} kcal (base ${diet.caloriesGoal} + ${todayExerciseCalories} treino)` 
+                          : `Meta fixa: ${diet.caloriesGoal} kcal/dia`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="mt-2">
+                  <InsightBadge text={insight} />
+                </div>
+                <Button variant="outline" className="mt-2" onClick={handleGeneratePdf}>
+                  Gerar Relatório PDF
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Notes Tab */}
@@ -751,7 +1151,10 @@ export default function ClientDetail() {
                   </div>
                 </div>
 
-                <Button onClick={saveGoal} disabled={savingGoal || !newGoal.target_value}>
+                <Button
+                  onClick={saveGoal}
+                  disabled={savingGoal || !newGoal.target_value}
+                >
                   <Target className="mr-2 h-4 w-4" />
                   {savingGoal ? "Salvando..." : "Criar Meta"}
                 </Button>
@@ -762,7 +1165,7 @@ export default function ClientDetail() {
               {goals.length === 0 ? (
                 <Card>
                   <CardContent className="py-8 text-center text-gray-500">
-                    Nenhuma meta definida ainda. Crie a primeira!
+                    Nenhuma meta criada. Adicione a primeira!
                   </CardContent>
                 </Card>
               ) : (
@@ -770,20 +1173,17 @@ export default function ClientDetail() {
                   <Card key={goal.id}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <TrendingUp className="h-5 w-5 text-green-600" />
-                          <div>
-                            <CardTitle className="text-lg">{getGoalTypeLabel(goal.goal_type)}</CardTitle>
-                            <CardDescription>
-                              Criada em {new Date(goal.created_at).toLocaleDateString("pt-BR")}
-                            </CardDescription>
-                          </div>
+                        <div>
+                          <CardTitle>{getGoalTypeLabel(goal.goal_type)}</CardTitle>
+                          <CardDescription>
+                            Criada em {new Date(goal.created_at).toLocaleDateString("pt-BR")}
+                          </CardDescription>
                         </div>
-                        {getStatusBadge(goal.status)}
+                        {getStatusBadge("active")}
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center justify-between">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <p className="text-sm text-gray-600">Meta</p>
                           <p className="text-2xl font-bold text-gray-900">{goal.target_value} kg</p>
@@ -811,6 +1211,24 @@ export default function ClientDetail() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Diet Modal */}
+      <EditDietModal
+        open={showEditDiet}
+        onClose={() => setShowEditDiet(false)}
+        onSuccess={() => {
+          fetchClientData();
+        }}
+        clientId={clientId || ''}
+        clientName={client?.nome || ''}
+        currentDiet={diet ? {
+          calories: diet.caloriesGoal,
+          protein: diet.proteinGoal,
+          carbs: diet.carbGoal,
+          fat: diet.fatGoal,
+        } : undefined}
+      />
     </div>
   );
-}
+} 
+   

@@ -4,7 +4,8 @@ import { normalizePhone } from '@/lib/phone';
 
 interface WeightRecord {
   id: string;
-  user_telefone: string; // 🔥 Alterado de user_id
+  user_telefone: string;
+  usuario_id?: string; // 🔥 ADD: Campo opcional
   peso: number;
   created_at: string;
 }
@@ -26,7 +27,7 @@ export function useWeightHistory() {
       const { data, error } = await supabase
         .from('registros_peso')
         .select('*')
-        .eq('user_telefone', phone) // 🔥 Agora usa telefone
+        .eq('user_telefone', phone)
         .order('created_at', { ascending: true });
 
       if (error) throw error;

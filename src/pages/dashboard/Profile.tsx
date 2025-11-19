@@ -28,24 +28,48 @@ const Profile = () => {
     objetivo: "maintenance" as GoalType,
   });
 
+  const [dietaDinamica, setDietaDinamica] = useState(true); // 🔥 Estado do tipo de dieta
+
   const [portalLoading, setPortalLoading] = useState(false);
 
-  // Update form when profile loads
+  // Carrega dados do perfil quando disponível
   useEffect(() => {
     if (profile) {
       setFormData({
         nome: profile.nome || "",
         email: profile.email || "",
-        telefone: profile.telefone,
-        peso: profile.peso,
-        altura: profile.altura.toString(),
-        idade: profile.idade.toString(),
-        sexo: profile.sexo,
-        nivel_atividade: profile.nivel_atividade,
-        objetivo: profile.objetivo as GoalType,
+        telefone: profile.telefone || "",
+        peso: profile.peso || "",
+        altura: profile.altura?.toString() || "",
+        idade: profile.idade?.toString() || "",
+        sexo: profile.sexo || "M",
+        nivel_atividade: profile.nivel_atividade || "3",
+        objetivo: (profile.objetivo as GoalType) || "maintenance",
       });
     }
   }, [profile]);
+
+  // 🔥 Buscar tipo de dieta atual
+  useEffect(() => {
+    const fetchDietType = async () => {
+      if (!userPhone) return;
+      
+      const normalizedPhone = userPhone.replace(/\D/g, '');
+      const phoneWithCountryCode = normalizedPhone.length === 11 ? '55' + normalizedPhone : normalizedPhone;
+      
+      const { data } = await supabase
+        .from('dietas')
+        .select('dieta_dinamica')
+        .eq('usuario_telefone', phoneWithCountryCode)
+        .maybeSingle();
+      
+      if (data) {
+        setDietaDinamica(data.dieta_dinamica ?? true);
+      }
+    };
+    
+    fetchDietType();
+  }, [userPhone]);
 
   // Simulação de dieta em tempo real
   const dietPreview = useMemo(() => {
@@ -60,11 +84,12 @@ const Profile = () => {
         idade,
         formData.sexo,
         parseInt(formData.nivel_atividade),
-        formData.objetivo
+        formData.objetivo,
+        dietaDinamica // 🔥 Passa o tipo de dieta atual
       );
     }
     return null;
-  }, [formData, simulateDiet]);
+  }, [formData, simulateDiet, dietaDinamica]);
 
   // Loading state
   if (isLoading) {
@@ -348,6 +373,26 @@ const Profile = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* 🔥 INDICADOR DO TIPO DE DIETA */}
+                  <div className={`p-3 rounded-lg border-2 ${dietaDinamica ? 'bg-purple-50 border-purple-200' : 'bg-amber-50 border-amber-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={dietaDinamica ? "default" : "secondary"}>
+                        {dietaDinamica ? '🔥 Dieta Dinâmica' : '⚡ Dieta Estática'}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {dietaDinamica 
+                          ? 'Treinos adicionam calorias ao dia' 
+                          : 'Treinos já inclusos na meta base'}
+                      </span>
+                    </div>
+                    {!dietaDinamica && (
+                      <p className="text-xs text-amber-700 mt-2">
+                        ℹ️ <strong>Nível de atividade está sendo usado</strong> para calcular sua meta base. 
+                        Se você alterar o nível, a meta será recalculada.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Meta Calórica Principal */}
                   <div className="text-center p-6 bg-background/80 rounded-lg border-2 border-primary/30">
                     <p className="text-sm text-muted-foreground mb-2">Meta Calórica Diária</p>
@@ -358,7 +403,7 @@ const Profile = () => {
                     <div className="mt-4 flex justify-center gap-4 text-xs text-muted-foreground">
                       <span>TMB: {dietPreview.bmr} kcal</span>
                       <span>•</span>
-                      <span>TDEE: {dietPreview.tdee} kcal</span>
+                      <span>Meta Base: {dietPreview.tdee} kcal</span>
                     </div>
                   </div>
 

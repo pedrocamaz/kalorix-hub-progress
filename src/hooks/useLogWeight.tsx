@@ -17,11 +17,23 @@ export function useLogWeight() {
 
       const phone = normalizePhone(userPhone);
 
-      // Inserir registro de peso usando telefone
+      // 🔥 FIX: Buscar usuario_id para poder inserir com relacionamento correto
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telefone', phone)
+        .single();
+
+      if (userError || !userData) {
+        throw new Error('Usuário não encontrado');
+      }
+
+      // Inserir registro de peso usando telefone E usuario_id
       const { data: weightRecord, error: weightError } = await supabase
         .from('registros_peso')
         .insert({
-          user_telefone: phone, // 🔥 Agora usa telefone
+          user_telefone: phone,
+          usuario_id: userData.id, // 🔥 ADD: Relacionamento com users
           peso: novoPeso,
           created_at: new Date().toISOString()
         })
@@ -33,7 +45,7 @@ export function useLogWeight() {
       // Atualizar peso no perfil do usuário
       const { error: profileError } = await supabase
         .from('users')
-        .update({ peso: novoPeso.toString() })
+        .update({ peso: novoPeso })
         .eq('telefone', phone);
 
       if (profileError) {
