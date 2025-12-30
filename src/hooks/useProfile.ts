@@ -115,7 +115,10 @@ export const useProfile = (userPhone: string) => {
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (profileData: Partial<UserProfile>) => {
-      const phone = normalizePhone(userPhone)
+      // 🔥 IMPORTANTE: Não normaliza o telefone aqui
+      // Usa diretamente o telefone do localStorage que já está normalizado
+      const phone = userPhone; // Já vem normalizado do localStorage
+      
       const { error } = await supabase
         .from('users')
         .update({
@@ -128,7 +131,7 @@ export const useProfile = (userPhone: string) => {
           nivel_atividade: profileData.nivel_atividade,
           objetivo: profileData.objetivo
         })
-        .eq('telefone', phone)
+        .eq('telefone', phone) // 🔥 Mantém o formato original
 
       if (error) {
         throw error
@@ -177,11 +180,14 @@ export const useProfile = (userPhone: string) => {
     const nivelAtividade = parseInt(profileData.nivel_atividade || currentProfile.nivel_atividade)
     const objetivo = (profileData.objetivo || currentProfile.objetivo) as GoalType
 
+    // 🔥 Usa o telefone original, não normaliza novamente
+    const phone = userPhone;
+
     // 🔥 BUSCAR TIPO DE DIETA ATUAL
     const { data: dietaAtual } = await supabase
       .from('dietas')
       .select('dieta_dinamica')
-      .eq('usuario_telefone', normalizePhone(userPhone))
+      .eq('usuario_telefone', phone) // 🔥 Formato original
       .maybeSingle()
     
     const dietaDinamica = dietaAtual?.dieta_dinamica ?? true // Padrão: dinâmica
@@ -215,7 +221,7 @@ export const useProfile = (userPhone: string) => {
     await supabase
       .from('dietas')
       .upsert({
-        usuario_telefone: normalizePhone(userPhone),
+        usuario_telefone: phone, // 🔥 Formato original
         calorias_diarias: Math.round(metaAlvo).toString(),
         proteina_gramas: Math.round(proteinGrams).toString(),
         carboidrato_gramas: Math.round(carbGrams).toString(),

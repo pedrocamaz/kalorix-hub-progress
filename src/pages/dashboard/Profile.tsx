@@ -5,11 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { CreditCard, User, Loader2, Flame, Target, Scale, TrendingUp, Zap, Activity } from "lucide-react";
+import { CreditCard, User, Loader2, Flame, Target, Scale, TrendingUp, Zap, Activity, Lock, ExternalLink } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useProfile, GOAL_CONFIGS, type GoalType } from "@/hooks/useProfile";
 import { toast } from "sonner";
 import { supabase, supabaseUrl } from "@/lib/supabaseClient";
+import { formatPhoneDisplay } from "@/lib/phone";
 
 const Profile = () => {
   const userPhone = localStorage.getItem('sessionPhone') || '';
@@ -28,8 +29,7 @@ const Profile = () => {
     objetivo: "maintenance" as GoalType,
   });
 
-  const [dietaDinamica, setDietaDinamica] = useState(true); // 🔥 Estado do tipo de dieta
-
+  const [dietaDinamica, setDietaDinamica] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
 
   // Carrega dados do perfil quando disponível
@@ -49,7 +49,7 @@ const Profile = () => {
     }
   }, [profile]);
 
-  // 🔥 Buscar tipo de dieta atual
+  // Buscar tipo de dieta atual
   useEffect(() => {
     const fetchDietType = async () => {
       if (!userPhone) return;
@@ -76,27 +76,20 @@ const Profile = () => {
     const peso = parseFloat(formData.peso) || 0;
     const altura = parseInt(formData.altura) || 0;
     const idade = parseInt(formData.idade) || 0;
+    const nivelAtividade = parseInt(formData.nivel_atividade) || 3;
 
-    if (peso > 0 && altura > 0 && idade > 0) {
-      return simulateDiet(
-        peso,
-        altura,
-        idade,
-        formData.sexo,
-        parseInt(formData.nivel_atividade),
-        formData.objetivo,
-        dietaDinamica // 🔥 Passa o tipo de dieta atual
-      );
+    if (peso && altura && idade) {
+      return simulateDiet(peso, altura, idade, formData.sexo, nivelAtividade, formData.objetivo, dietaDinamica);
     }
     return null;
-  }, [formData, simulateDiet, dietaDinamica]);
+  }, [formData, dietaDinamica, simulateDiet]);
 
   // Loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
           <p className="text-muted-foreground">Carregando perfil...</p>
         </div>
       </div>
@@ -140,13 +133,24 @@ const Profile = () => {
         toast.error("Sessão inválida. Faça login novamente.");
         return;
       }
+
+      // 🔥 FIX: Validar assinatura_ativa ANTES de chamar Edge Function
+      if (!profile?.assinatura_ativa) {
+        toast.error("Você precisa de uma assinatura ativa para gerenciar pagamentos.", {
+          description: "Contrate um plano para acessar o portal de assinaturas.",
+        });
+        return;
+      }
+
       const returnUrl = window.location.origin + "/dashboard/profile";
 
+      // Tenta chamar Edge Function via SDK
       const { data, error } = await supabase.functions.invoke("billing-portal", {
         body: { phone: userPhone, return_url: returnUrl },
       });
 
       if (error) {
+        // Fallback para fetch direto
         try {
           const r = await fetch(`${supabaseUrl}/functions/v1/billing-portal`, {
             method: "POST",
@@ -156,11 +160,25 @@ const Profile = () => {
             },
             body: JSON.stringify({ phone: userPhone, return_url: returnUrl }),
           });
+          
           const text = await r.text();
           console.error("Fetch direct response:", { status: r.status, text });
+          
           if (!r.ok) {
+            // 🔥 Tratamento especial para erro 403 (sem assinatura)
+            if (r.status === 403) {
+              const errorData = JSON.parse(text);
+              toast.error(errorData.message || "Assinatura necessária");
+              if (errorData.redirect_url) {
+                setTimeout(() => {
+                  window.open(errorData.redirect_url, '_blank');
+                }, 1500);
+              }
+              return;
+            }
             throw new Error(`Erro HTTP ${r.status}: ${text}`);
           }
+          
           const parsed = JSON.parse(text);
           if (parsed.url) {
             window.location.href = parsed.url;
@@ -169,17 +187,19 @@ const Profile = () => {
         } catch (fetchErr) {
           console.error("Fetch direct error:", fetchErr);
         }
-        throw error;
+
+        toast.error("Erro ao acessar portal de assinatura. Tente novamente.");
+        return;
       }
 
       if (data?.url) {
         window.location.href = data.url;
       } else {
-        toast.error("Portal não retornou URL válida");
+        toast.error("URL de portal não retornada. Verifique configuração.");
       }
-    } catch (error: any) {
-      console.error("Error opening portal:", error);
-      toast.error(error.message || "Erro ao abrir portal de assinatura");
+    } catch (error) {
+      console.error("handleManageSubscription error:", error);
+      toast.error("Erro ao acessar portal de assinatura.");
     } finally {
       setPortalLoading(false);
     }
@@ -198,20 +218,15 @@ const Profile = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Configuração do Perfil</h1>
-        <p className="text-muted-foreground">Personalize suas metas e dados</p>
-      </div>
-
-      {/* Personal Information */}
+    <div className="space-y-6 pb-16">
+      {/* Profile Form Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5 text-primary" />
-            Dados Pessoais
+            Informações Pessoais
           </CardTitle>
-          <CardDescription>Mantenha suas informações atualizadas</CardDescription>
+          <CardDescription>Atualize seus dados para cálculos mais precisos</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -240,10 +255,15 @@ const Profile = () => {
                 <Input
                   id="telefone"
                   type="tel"
-                  value={formData.telefone}
+                  value={formatPhoneDisplay(formData.telefone)}
                   disabled
                   className="bg-muted"
                 />
+                <p className="text-xs text-muted-foreground">
+                  {formData.telefone.startsWith("1") 
+                    ? "🇺🇸 Número dos EUA (não editável)" 
+                    : "🇧🇷 Número brasileiro (não editável)"}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -462,6 +482,86 @@ const Profile = () => {
         </CardContent>
       </Card>
 
+      {/* 🔥 UPDATED: Subscription Card with Status Indicator */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-primary" />
+            Assinatura
+          </CardTitle>
+          <CardDescription>Gerencie sua assinatura e pagamento</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className={`flex items-center justify-between p-4 rounded-lg ${
+            profile.assinatura_ativa ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-300'
+          }`}>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold">
+                  {profile.assinatura_ativa ? 'Premium Ativo' : 'Sem Assinatura'}
+                </p>
+                {profile.assinatura_ativa ? (
+                  <Badge variant="default" className="bg-green-600">Ativo</Badge>
+                ) : (
+                  <Badge variant="secondary" className="bg-gray-500 text-white">Inativo</Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {profile.assinatura_ativa 
+                  ? 'Acesso completo ao app' 
+                  : 'Contrate um plano para acessar recursos premium'}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-primary">R$ 27,90</p>
+              <p className="text-xs text-muted-foreground">/mês</p>
+            </div>
+          </div>
+
+          {/* 🔥 Botão condicional baseado no status */}
+          {profile.assinatura_ativa ? (
+            <Button 
+              onClick={handleManageSubscription} 
+              variant="outline" 
+              className="w-full" 
+              disabled={portalLoading}
+            >
+              {portalLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Abrindo Portal...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Gerenciar Assinatura no Stripe
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => window.open('https://kalorix.com.br/pricing', '_blank')}
+              variant="default" 
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              <Lock className="mr-2 h-4 w-4" />
+              Assinar Agora
+            </Button>
+          )}
+
+          {/* 🔥 Info adicional para não-assinantes */}
+          {!profile.assinatura_ativa && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-800">
+                <strong>⚠️ Atenção:</strong> Você só pode gerenciar pagamentos se tiver uma assinatura ativa. 
+                Contrate um plano para acessar o portal de assinaturas.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Share Code Card - Only for clients */}
       {profile.share_code && (
         <Card className="border-green-200 bg-green-50/50 dark:bg-green-900/10">
           <CardHeader>
@@ -538,34 +638,6 @@ const Profile = () => {
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-primary" />
-            Assinatura
-          </CardTitle>
-          <CardDescription>Gerencie sua assinatura e pagamento</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 rounded-lg bg-secondary">
-            <div>
-              <p className="font-semibold">Premium</p>
-              <p className="text-sm text-muted-foreground">
-                {profile.assinatura_ativa ? 'Assinatura ativa' : 'Assinatura inativa'}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-primary">R$ 27,90</p>
-              <p className="text-xs text-muted-foreground">/mês</p>
-            </div>
-          </div>
-
-          <Button onClick={handleManageSubscription} variant="outline" className="w-full" disabled={portalLoading}>
-            {portalLoading ? "Abrindo..." : "Gerenciar Assinatura no Stripe"}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 };
